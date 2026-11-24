@@ -195,7 +195,7 @@ pub fn time_range_phrase(range: &str) -> &'static str {
 pub fn live_caption(snapshot: &TelemetrySnapshot) -> String {
     let m = &snapshot.metrics;
     if m.cpu.points.is_empty() && m.cpu.current.is_none() {
-        return "Live numbers from the home server are unavailable right now.".to_string();
+        return "Live metrics from the homelab are unavailable right now.".to_string();
     }
     let mut parts = Vec::new();
     if let Some(cpu) = m.cpu.current {
@@ -205,11 +205,11 @@ pub fn live_caption(snapshot: &TelemetrySnapshot) -> String {
         parts.push(format!("{mem:.0}% memory"));
     }
     let mut out = format!(
-        "CPU on my home server over the past {}",
+        "CPU on the homelab host over the past {}",
         time_range_phrase(&snapshot.time_range)
     );
     if !parts.is_empty() {
-        out.push_str(". Right now: ");
+        out.push_str(". Now: ");
         out.push_str(&parts.join(", "));
     }
     if let Some(up) = format_uptime_prose(m.uptime_seconds) {
@@ -319,7 +319,7 @@ pub fn render_topology_diagram(snapshot: &TelemetrySnapshot) -> Markup {
                         }
                     }
                     (node(0.0, 150.0, "Internet", "HTTPS only", "var(--rule-strong)"))
-                    (node(196.0, 170.0, "nginx", "TLS, reverse proxy", "var(--rule-strong)"))
+                    (node(196.0, 170.0, "Caddy", "TLS, reverse proxy", "var(--rule-strong)"))
                     (node(412.0, 196.0, "Proxmox VE", &host_line, "var(--rule-strong)"))
                     (node(654.0, 206.0, "Containers and VMs", &guests_line, "var(--rule-strong)"))
 
@@ -340,7 +340,7 @@ pub fn render_topology_diagram(snapshot: &TelemetrySnapshot) -> Markup {
                 }
             }
             figcaption {
-                "Requests come in through nginx and land on a single Proxmox host. Prometheus scrapes the host through prometheus-pve-exporter; this site reads Grafana's API on a timer and never exposes the token or internal addresses."
+                "Requests come in through Caddy and land on a single Proxmox host. Prometheus scrapes the host through prometheus-pve-exporter; this site reads Grafana's API on a timer and never exposes the token or internal addresses."
             }
         }
     }

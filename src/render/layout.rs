@@ -60,7 +60,7 @@ const THEME_BOOT: &str = r#"(()=>{try{const t=localStorage.getItem('urashyl-them
 
 pub fn render_shell(meta: PageMeta<'_>, snapshot: &TelemetrySnapshot, body: Markup) -> Markup {
     let nav_items = [
-        ("Work", "/projects", ActivePage::Projects),
+        ("Projects", "/projects", ActivePage::Projects),
         ("Homelab", "/homelab", ActivePage::Homelab),
         ("Status", "/telemetry", ActivePage::Telemetry),
         ("About", "/about", ActivePage::About),
@@ -131,7 +131,7 @@ pub fn render_shell(meta: PageMeta<'_>, snapshot: &TelemetrySnapshot, body: Mark
                 footer class="site-footer" {
                     div class="wrap footer-inner" {
                         p {
-                            "Written in Rust and served from my homelab. "
+                            "Built with Rust and Axum. "
                             a href="https://github.com/urashyl/urashyl.dev" rel="noopener noreferrer" { "Source on GitHub" }
                             "."
                         }

@@ -94,13 +94,13 @@
     const m = snap.metrics || {};
     const cpu = m.cpu || {};
     if ((!cpu.points || cpu.points.length === 0) && !isNum(cpu.current)) {
-      return 'Live numbers from the home server are unavailable right now.';
+      return 'Live metrics from the homelab are unavailable right now.';
     }
-    let out = `CPU on my home server over the past ${RANGE[snap.time_range] || '6 hours'}`;
+    let out = `CPU on the homelab host over the past ${RANGE[snap.time_range] || '6 hours'}`;
     const parts = [];
     if (isNum(cpu.current)) parts.push(`${cpu.current.toFixed(0)}% CPU`);
     if (m.memory && isNum(m.memory.current)) parts.push(`${m.memory.current.toFixed(0)}% memory`);
-    if (parts.length) out += `. Right now: ${parts.join(', ')}`;
+    if (parts.length) out += `. Now: ${parts.join(', ')}`;
     const up = uptimeProse(m.uptime_seconds);
     if (up) out += `, up ${up}`;
     return `${out}.`;

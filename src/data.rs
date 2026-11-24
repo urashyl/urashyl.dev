@@ -134,21 +134,14 @@ pub struct StackGroup {
     pub items: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct EngineeringPrinciple {
-    pub index: &'static str,
-    pub title: &'static str,
-    pub summary: &'static str,
-}
-
 pub const PROFILE: Profile = Profile {
     handle: "urashyl",
     domain: "urashyl.dev",
     github_url: "https://github.com/urashyl",
     avatar_url: "https://avatars.githubusercontent.com/u/109770019?v=4",
     location_note: "Arch Linux · Proxmox VE · Self-hosted",
-    headline: "I write Rust services, lock down Linux machines, and run most of my own infrastructure on a Proxmox server at home.",
-    subheadline: "Lately that means a multi-tenant web platform, an Arch live system that forgets everything on shutdown, sandboxes for AI coding agents, and a Wayland desktop I keep rebuilding.",
+    headline: "Rust backends, hardened Linux systems, and self-hosted infrastructure.",
+    subheadline: "Current projects: a multi-tenant Rust web platform, an amnesic Arch Linux live system, hardened sandboxes for AI coding agents, and a niri Wayland desktop.",
     uptime: "99.9%",
     hypervisor: "Proxmox VE",
     os: "Arch Linux (linux-hardened)",
@@ -325,9 +318,9 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         role: "Password manager",
         category: ServiceCategory::Security,
         runtime: "LXC container",
-        exposure: "Public, behind nginx",
+        exposure: "Public, behind Caddy",
         probe_keywords: &["vaultwarden", "bitwarden"],
-        description: "Passwords, passkeys, and TOTP codes for every device I own, end-to-end encrypted with the Bitwarden clients.",
+        description: "Passwords, passkeys, and TOTP codes, end-to-end encrypted and used through the Bitwarden clients.",
         highlights: &["End-to-end encrypted", "Passkeys and TOTP"],
     },
     HomelabService {
@@ -338,7 +331,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "LXC container",
         exposure: "LAN only",
         probe_keywords: &["infisical"],
-        description: "API keys and tokens for everything else in the lab, versioned and injected at runtime instead of sitting in .env files.",
+        description: "Versioned storage for API keys and tokens, injected at runtime instead of kept in .env files.",
         highlights: &["Versioned secrets", "No plaintext .env files"],
     },
     HomelabService {
@@ -347,9 +340,9 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         role: "Single sign-on",
         category: ServiceCategory::Security,
         runtime: "LXC container",
-        exposure: "Public, behind nginx",
+        exposure: "Public, behind Caddy",
         probe_keywords: &["authentik"],
-        description: "One login, with 2FA, in front of the services that don't have good auth of their own.",
+        description: "Single sign-on with 2FA in front of other services.",
         highlights: &["OIDC and forward auth", "WebAuthn"],
     },
     HomelabService {
@@ -369,9 +362,9 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         role: "Files, calendar, contacts",
         category: ServiceCategory::Storage,
         runtime: "LXC container on Alpine",
-        exposure: "Public, behind nginx",
+        exposure: "Public, behind Caddy",
         probe_keywords: &["nextcloud"],
-        description: "File sync, calendars, and contacts for my phone and laptops, in place of Google Drive and iCloud.",
+        description: "File sync, calendars, and contacts.",
         highlights: &["CalDAV and CardDAV", "Desktop and mobile sync"],
     },
     HomelabService {
@@ -382,7 +375,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "LXC container with SQLite",
         exposure: "LAN only",
         probe_keywords: &["memos"],
-        description: "A quick, markdown-first scratchpad for commands I'll need again and notes on how things in the lab are put together.",
+        description: "Markdown notes and runbooks.",
         highlights: &["Markdown", "Instant capture"],
     },
     HomelabService {
@@ -393,7 +386,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "LXC container",
         exposure: "LAN only",
         probe_keywords: &["mealie"],
-        description: "Recipes scraped from the web without the life story, plus a weekly meal plan and shopping list.",
+        description: "Recipe manager with meal planning and shopping lists.",
         highlights: &["Recipe import from URLs", "Shopping lists"],
     },
     HomelabService {
@@ -402,9 +395,9 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         role: "Push notifications",
         category: ServiceCategory::Storage,
         runtime: "LXC container",
-        exposure: "Public, behind nginx",
+        exposure: "Public, behind Caddy",
         probe_keywords: &["ntfy"],
-        description: "Gets notifications from scripts and services onto my phone with a single HTTP request.",
+        description: "Push notifications to phones, sent over plain HTTP.",
         highlights: &["Self-hosted push", "Works from curl"],
     },
     HomelabService {
@@ -413,9 +406,9 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         role: "Photo and video backup",
         category: ServiceCategory::Media,
         runtime: "LXC container",
-        exposure: "Public, behind nginx",
+        exposure: "Public, behind Caddy",
         probe_keywords: &["immich"],
-        description: "Backs up photos from my phone automatically and makes them searchable with machine learning that runs locally.",
+        description: "Photo and video backup from phones, with search powered by locally run machine learning.",
         highlights: &["Local ML search", "Automatic phone backup"],
     },
     HomelabService {
@@ -424,19 +417,19 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         role: "Movies, shows, music",
         category: ServiceCategory::Media,
         runtime: "LXC container with hardware transcoding",
-        exposure: "Public, behind nginx",
+        exposure: "Public, behind Caddy",
         probe_keywords: &["jellyfin"],
-        description: "Streams my media library to any screen, transcoding on the GPU when a client needs it.",
+        description: "Media server for movies, shows, and music, with hardware transcoding.",
         highlights: &["Hardware transcoding", "No tracking"],
     },
     HomelabService {
-        id: "nginx",
-        name: "nginx",
+        id: "caddy",
+        name: "Caddy",
         role: "Reverse proxy",
         category: ServiceCategory::Infrastructure,
         runtime: "LXC container",
         exposure: "The only public entry point",
-        probe_keywords: &["nginx"],
+        probe_keywords: &["caddy", "nginx"],
         description: "Terminates TLS and routes each subdomain to the right container or VM. Nothing else is reachable from outside.",
         highlights: &["TLS for every subdomain", "Single ingress"],
     },
@@ -459,7 +452,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "LXC container",
         exposure: "LAN only",
         probe_keywords: &["uptimekuma", "uptime-kuma"],
-        description: "Checks that every service answers, and keeps a history of when it didn't.",
+        description: "Uptime checks and history for each service.",
         highlights: &["HTTP and TCP checks", "Status history"],
     },
     HomelabService {
@@ -470,7 +463,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "LXC container",
         exposure: "LAN only",
         probe_keywords: &["glance"],
-        description: "The browser start page for the lab, with a link to everything in it.",
+        description: "Start page with links to everything in the lab.",
         highlights: &["One page for everything"],
     },
     HomelabService {
@@ -481,7 +474,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "KVM guest, 4 GB RAM, 32 GB disk",
         exposure: "",
         probe_keywords: &["urashyl.dev"],
-        description: "The server you're reading this from.",
+        description: "Runs this website.",
         highlights: &[],
     },
     HomelabService {
@@ -492,7 +485,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "KVM guest, 32 GB RAM, 128 GB disk",
         exposure: "",
         probe_keywords: &["mitch-pro-production"],
-        description: "The live mitch.pro platform, including the desktop VMs it hands out.",
+        description: "The live mitch.pro platform.",
         highlights: &[],
     },
     HomelabService {
@@ -503,18 +496,18 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "KVM guest, 16 GB RAM, 128 GB disk",
         exposure: "",
         probe_keywords: &["mitch-pro-dev"],
-        description: "Where mitch.pro changes get tried before they reach production.",
+        description: "Development instance of mitch.pro.",
         highlights: &[],
     },
     HomelabService {
         id: "vm-arch-linux",
         name: "arch-linux",
-        role: "Arch Linux workstation",
+        role: "Arch Linux",
         category: ServiceCategory::Machines,
         runtime: "KVM guest, 48 GB RAM, 96 GB disk",
         exposure: "",
         probe_keywords: &["arch-linux"],
-        description: "A full Arch install for heavier work and for testing builds.",
+        description: "",
         highlights: &[],
     },
     HomelabService {
@@ -525,7 +518,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "KVM guest, 16 GB RAM, 64 GB disk",
         exposure: "",
         probe_keywords: &["vpn-box"],
-        description: "A dedicated VM for VPN tunnels.",
+        description: "",
         highlights: &[],
     },
     HomelabService {
@@ -536,7 +529,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         runtime: "KVM guest, 8 GB RAM, 64 GB disk",
         exposure: "",
         probe_keywords: &["crafty-controller"],
-        description: "Runs Minecraft servers through the Crafty Controller panel.",
+        description: "Minecraft servers managed with Crafty Controller.",
         highlights: &[],
     },
     HomelabService {
@@ -589,25 +582,7 @@ pub const STACK_GROUPS: &[StackGroup] = &[
     },
     StackGroup {
         title: "Desktop and monitoring",
-        items: &["niri on Wayland", "dwm on X11", "Quickshell", "Prometheus", "Grafana", "nginx"],
-    },
-];
-
-pub const PRINCIPLES: &[EngineeringPrinciple] = &[
-    EngineeringPrinciple {
-        index: "1",
-        title: "One binary beats a cluster",
-        summary: "For a project run by one person, a compiled Rust service with SQLite and its assets baked in is easier to deploy, back up, and reason about than a stack of Node processes and containers. This site is built that way too.",
-    },
-    EngineeringPrinciple {
-        index: "2",
-        title: "Draw the trust boundary first",
-        summary: "Before features, I decide what can talk to what. lacuna drops every packet that isn't headed into a tunnel, coding agents get their own network namespace with no route to localhost, and each homelab service lives in its own guest.",
-    },
-    EngineeringPrinciple {
-        index: "3",
-        title: "Keep the data at home",
-        summary: "Passwords, photos, files, and notes sit on hardware I own, behind TLS and single sign-on, with monitoring I can read myself. I'd rather fix my own server at 2am than wonder what a cloud provider is doing with my stuff.",
+        items: &["niri on Wayland", "dwm on X11", "Quickshell", "Prometheus", "Grafana", "Caddy"],
     },
 ];
 

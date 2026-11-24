@@ -386,7 +386,7 @@ async fn api_search(
 
     let pages = [
         ("Home", "Intro and selected work", "/"),
-        ("Work", "Every project, with write-ups", "/projects"),
+        ("Projects", "Every project, with write-ups", "/projects"),
         ("Homelab", "What runs on the Proxmox server", "/homelab"),
         ("Server status", "Live metrics, alerts and service checks", "/telemetry"),
         ("About", "Background, tools, and how this site works", "/about"),
@@ -607,7 +607,7 @@ mod tests {
             ("/projects/mitch-pro", "Decisions"),
             ("/homelab", "Passwords and secrets"),
             ("/telemetry", "Server status"),
-            ("/about", "What I use"),
+            ("/about", "Tools"),
         ] {
             let resp = client.get(format!("{base}{path}")).send().await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "GET {path}");

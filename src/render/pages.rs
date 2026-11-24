@@ -2,7 +2,7 @@ use maud::{Markup, html};
 
 use crate::{
     data::{
-        HOMELAB_SERVICES, HomelabService, PRINCIPLES, PROFILE, PROJECTS, Project, ProjectCategory,
+        HOMELAB_SERVICES, HomelabService, PROFILE, PROJECTS, Project, ProjectCategory,
         STACK_GROUPS, ServiceCategory, filter_services,
     },
     grafana::{MetricSeries, ServiceProbeStatus, TelemetrySnapshot, TelemetryState},
@@ -66,7 +66,7 @@ pub fn render_home(snapshot: &TelemetrySnapshot) -> Markup {
             h1 class="hero-title" { (PROFILE.headline) }
             p class="hero-sub" { (PROFILE.subheadline) }
             p class="hero-links" {
-                a class="button" href="/projects" { "See my work" }
+                a class="button" href="/projects" { "Projects" }
                 a class="button button-quiet" href=(PROFILE.github_url) rel="noopener noreferrer" {
                     (github_icon()) " GitHub"
                 }
@@ -99,11 +99,11 @@ pub fn render_home(snapshot: &TelemetrySnapshot) -> Markup {
 
         section class="wrap section" aria-labelledby="home-lab-heading" {
             div class="section-head" {
-                h2 id="home-lab-heading" { "Running at home" }
-                a href="/homelab" { "How it's set up" }
+                h2 id="home-lab-heading" { "Homelab" }
+                a href="/homelab" { "Details" }
             }
             p class="section-lead" {
-                "Everything I'd otherwise pay a cloud company for runs on one Proxmox machine, each service in its own container. A few of them:"
+                "Self-hosted services on one Proxmox host, each in its own container."
             }
             ul class="service-list" {
                 @for svc in HOMELAB_SERVICES.iter().filter(|s| matches!(s.category, ServiceCategory::Security | ServiceCategory::Storage | ServiceCategory::Media)).take(8) {
@@ -155,9 +155,9 @@ pub fn render_projects(
 
     let body = html! {
         section class="wrap page-head" {
-            h1 { "Work" }
+            h1 { "Projects" }
             p class="page-lead" {
-                "Projects I've built and still maintain. Each one links to a write-up of how it works and why it's built that way."
+                "Each project links to a write-up of how it is built."
             }
             nav class="filter" aria-label="Filter by category" {
                 a href=(href_for(None)) aria-current=[category.is_none().then_some("page")] { "All" }
@@ -212,7 +212,7 @@ pub fn render_projects(
 
     render_shell(
         PageMeta {
-            title: "Work · urashyl",
+            title: "Projects · urashyl",
             description: "Rust services, Linux security tooling, and desktop projects by urashyl.",
             path: "/projects",
             active: ActivePage::Projects,
@@ -243,7 +243,7 @@ pub fn render_project_detail(
             div class="case-grid" {
                 div class="case-main prose" {
                     @if let Some(note) = project.status_note {
-                        p class="callout" { (note) ". Use it to learn from, not to rely on." }
+                        p class="callout" { (note) "." }
                     }
                     p { (project.overview) }
 
@@ -373,7 +373,7 @@ pub fn render_homelab(snapshot: &TelemetrySnapshot, category: Option<ServiceCate
         section class="wrap page-head" {
             h1 { "Homelab" }
             p class="page-lead" {
-                "Everything runs on one Proxmox VE host called tartarus. Services get their own LXC container, heavier things like this website and mitch.pro get full VMs, and the only way in from outside is through nginx. The same box also holds the pool of desktop VMs that mitch.pro hands out on demand. "
+                "Everything runs on one Proxmox VE host called tartarus. Services get their own LXC container, heavier things like this website and mitch.pro get full VMs, and the only way in from outside is through Caddy."
                 @if let Some(line) = &host_stats {
                     span data-homelab-stats="" { (line) }
                 }
@@ -448,7 +448,7 @@ GRAFANA_TIME_RANGE=6h";
                 span data-status-sentence="" { (status_sentence(snapshot)) }
             }
             p class="page-lead small" {
-                "Numbers from my Proxmox host over the past " (time_range_phrase(&snapshot.time_range)) ". "
+                "Metrics from the Proxmox host over the past " (time_range_phrase(&snapshot.time_range)) ". "
                 "The server reads Grafana every " (snapshot.poll_interval_secs) " seconds and pushes updates to this page as they arrive; "
                 "your visit never triggers a query. Last read "
                 span class="tabular" data-last-sync="" { (format_iso_short(snapshot.last_synced_at.as_deref())) }
@@ -652,36 +652,13 @@ pub fn render_about(snapshot: &TelemetrySnapshot) -> Markup {
             div {
                 h1 { "About" }
                 p class="page-lead" {
-                    "I'm urashyl. I mostly write Rust and shell, run Arch on linux-hardened, and spend more time than is reasonable on my homelab."
-                }
-            }
-        }
-
-        section class="wrap section prose-wrap" {
-            div class="prose" {
-                p {
-                    "My favorite kind of project is one where the security model is the interesting part: an Arch live system that leaves nothing behind, a sandbox that lets AI agents write code without touching the rest of my machine, a chat server where the host can't read the messages. I like getting those to work without making them miserable to use."
-                }
-                p {
-                    "Most of what I build runs on hardware I own. That started as a way to stop paying for cloud storage and turned into a small Proxmox setup with monitoring, backups, and more containers than I'd planned."
-                }
-            }
-        }
-
-        section class="wrap section" aria-labelledby="principles-heading" {
-            h2 id="principles-heading" { "How I like to build things" }
-            div class="principles" {
-                @for p in PRINCIPLES {
-                    div {
-                        h3 { (p.title) }
-                        p { (p.summary) }
-                    }
+                    (PROFILE.headline)
                 }
             }
         }
 
         section class="wrap section" aria-labelledby="tools-heading" {
-            h2 id="tools-heading" { "What I use" }
+            h2 id="tools-heading" { "Tools" }
             dl class="stack" {
                 @for group in STACK_GROUPS {
                     div {
@@ -717,7 +694,7 @@ pub fn render_about(snapshot: &TelemetrySnapshot) -> Markup {
     render_shell(
         PageMeta {
             title: "About · urashyl",
-            description: "Who urashyl is, how they like to build software, and how this site works.",
+            description: "Tools urashyl works with, and how this site works.",
             path: "/about",
             active: ActivePage::About,
         },
