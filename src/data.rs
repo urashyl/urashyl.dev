@@ -546,7 +546,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
     HomelabService {
         id: "vm-goguardian",
         name: "goguardian",
-        role: "",
+        role: "Serves goguardian.mitch.pro",
         category: ServiceCategory::Machines,
         runtime: "KVM guest, 2 GB RAM, 32 GB disk",
         exposure: "",
@@ -557,7 +557,7 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
     HomelabService {
         id: "vm-decrypt-this",
         name: "decrypt-this",
-        role: "",
+        role: "GoGuardian research environment",
         category: ServiceCategory::Machines,
         runtime: "KVM guest, 16 GB RAM, 64 GB disk",
         exposure: "",
