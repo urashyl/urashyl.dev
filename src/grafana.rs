@@ -525,10 +525,11 @@ impl GrafanaClient {
             build_query_item("uptime", &queries.uptime, ds, is_influx, interval_ms, true),
         ];
 
-        if !is_influx
-            && let Some(guests_expr) = queries.guests.as_deref()
-            && !guests_expr.trim().is_empty()
-        {
+        let guests_expr = queries
+            .guests
+            .as_deref()
+            .filter(|e| !is_influx && !e.trim().is_empty());
+        if let Some(guests_expr) = guests_expr {
             query_specs.push(build_query_item(
                 "guests",
                 guests_expr,
@@ -539,9 +540,7 @@ impl GrafanaClient {
             ));
         }
 
-        if let Some(svc_expr) = queries.services.as_deref()
-            && !svc_expr.trim().is_empty()
-        {
+        if let Some(svc_expr) = queries.services.as_deref().filter(|e| !e.trim().is_empty()) {
             query_specs.push(build_query_item(
                 "services",
                 svc_expr,
@@ -574,10 +573,13 @@ impl GrafanaClient {
                 "to": now_ms.to_string(),
                 "queries": [build_query_item("services", "up", ds, false, interval_ms, true)],
             });
-            if let Ok(fallback) = self.send_ds_query(fallback_payload).await
-                && let Some(svc_res) = fallback.results.get("services").cloned()
-                && !svc_res.frames.is_empty()
-            {
+            let svc_res = self
+                .send_ds_query(fallback_payload)
+                .await
+                .ok()
+                .and_then(|fallback| fallback.results.get("services").cloned())
+                .filter(|r| !r.frames.is_empty());
+            if let Some(svc_res) = svc_res {
                 parsed.results.insert("services".to_string(), svc_res);
             }
         }
@@ -1063,9 +1065,7 @@ pub fn parse_metric_series(
         return series;
     };
 
-    if let Some(err) = &res.error
-        && !err.trim().is_empty()
-    {
+    if let Some(err) = res.error.as_ref().filter(|e| !e.trim().is_empty()) {
         series.query_error = Some(err.clone());
         return series;
     }
@@ -1163,9 +1163,7 @@ fn parse_timestamp_ms(val: &serde_json::Value) -> Option<i64> {
                 } else {
                     Some(i)
                 }
-            } else if let Some(f) = n.as_f64()
-                && f.is_finite()
-            {
+            } else if let Some(f) = n.as_f64().filter(|f| f.is_finite()) {
                 let i = f.round() as i64;
                 if i.abs() < 100_000_000_000 {
                     Some(i * 1000)
@@ -1268,11 +1266,11 @@ fn extract_service_probes(svc_res: &DsQueryResult) -> Vec<ServiceProbeStatus> {
         };
         let is_up = last.value >= 0.5;
 
+        let usable = |v: &&String| !v.trim().is_empty() && !contains_ip_like(v);
+        let frame_name = frame.schema.name.as_ref().filter(usable);
+
         let mut candidates = Vec::new();
-        if let Some(name) = &frame.schema.name
-            && !name.trim().is_empty()
-            && !contains_ip_like(name)
-        {
+        if let Some(name) = frame_name {
             candidates.push(name.clone());
         }
         let mut preferred_target: Option<String> = None;
@@ -1280,32 +1278,21 @@ fn extract_service_probes(svc_res: &DsQueryResult) -> Vec<ServiceProbeStatus> {
         for field in &frame.schema.fields {
             if let Some(labels) = &field.labels {
                 for key in ["name", "service", "container", "target", "job"] {
-                    if let Some(val) = labels.get(key)
-                        && !val.trim().is_empty()
-                        && !contains_ip_like(val)
-                    {
+                    if let Some(val) = labels.get(key).filter(usable) {
                         if preferred_target.is_none() && key != "job" {
                             preferred_target = Some(val.clone());
                         }
                         candidates.push(val.clone());
                     }
                 }
-                if preferred_target.is_none()
-                    && let Some(job_val) = labels.get("job")
-                    && !job_val.trim().is_empty()
-                    && !contains_ip_like(job_val)
-                {
-                    preferred_target = Some(job_val.clone());
+                if preferred_target.is_none() {
+                    preferred_target = labels.get("job").filter(usable).cloned();
                 }
             }
         }
 
-        if preferred_target.is_none()
-            && let Some(name) = &frame.schema.name
-            && !name.trim().is_empty()
-            && !contains_ip_like(name)
-        {
-            preferred_target = Some(name.clone());
+        if preferred_target.is_none() {
+            preferred_target = frame_name.cloned();
         }
 
         if !candidates.is_empty() {

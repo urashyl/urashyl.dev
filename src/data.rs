@@ -620,9 +620,7 @@ pub fn filter_projects(category: Option<ProjectCategory>, query: &str) -> Vec<&'
     PROJECTS
         .iter()
         .filter(|p| {
-            if let Some(cat) = category
-                && p.category != cat
-            {
+            if category.is_some_and(|cat| p.category != cat) {
                 return false;
             }
             if q.is_empty() {
