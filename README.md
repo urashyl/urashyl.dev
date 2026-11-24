@@ -7,12 +7,13 @@ Open-source, single-binary Rust + Axum portfolio and live Proxmox VE homelab obs
 - **Zero Node.js Runtime** — Pure Rust (`axum 0.8`, `tokio`, `maud`, `reqwest` over `rustls-tls`), with CSS, JavaScript, and SVG assets embedded directly via `include_str!`.
 - **Strict Cache-Only Grafana Polling (Abuse-Resistant)** — Only the server's internal background poller (`GRAFANA_POLL_INTERVAL_SECS`) queries Grafana. Visitor page loads, JSON API requests, and Server-Sent Events read exclusively from the sanitized in-memory cache; no public endpoint can trigger upstream Grafana queries.
 - **Multi-Page Routes**:
-  - `/` — Editorial overview, flagship `mitch.pro` spotlight, live Grafana cluster telemetry panel, homelab strip, and operating principles.
-  - `/projects` — Searchable and category-filterable repository catalog & index table.
-  - `/projects/{slug}` — Architectural case studies (`mitch-pro`, `lacuna`, `ai-container`, `niri`) with component layer breakdowns and engineering decisions.
-  - `/homelab` — Proxmox VE topology diagram and self-hosted stack matrix (`Infisical`, `Bitwarden`, `Immich`, `Nextcloud`, `Jellyfin`, `Memos`) enriched with live Grafana service status.
-  - `/telemetry` — Live Grafana observability console with Server-Sent Events (`SSE`), CPU/memory/disk/guests/network SVG charts, active alerts, service probes, dashboards, annotations, and setup diagnostics.
-  - `/about` — Engineering principles, technical stack matrix, and architecture colophon.
+  - `/` — Intro, a live CPU trace from the homelab, selected work, and what runs at home.
+  - `/projects` — All projects, filterable by category (`?category=systems|desktop`, `?q=`).
+  - `/projects/{slug}` — Write-ups (`mitch-pro`, `lacuna`, `ai-container`, `niri`): how each is built and why.
+  - `/homelab` — Topology diagram and the services on the Proxmox host, with live up/down status.
+  - `/telemetry` — Server status: CPU/memory/disk/guests/network charts, service checks, alerts, and events, updated over SSE.
+  - `/about` — Background, principles, tools, and how the site works.
+  - `/robots.txt`, `/sitemap.xml`. CSS/JS/favicon URLs carry a content hash (`?v=`) and are cached as immutable.
 - **Read-Only JSON & Streaming APIs**:
   - `GET /api/health` — Server status, uptime, and cached Grafana connection state.
   - `GET /api/telemetry` — Current sanitized Grafana telemetry snapshot from cache.
@@ -67,6 +68,18 @@ cargo test
 # Run in release mode
 cargo run --release
 ```
+
+## Running as a service
+
+The repo is meant to live at `~/urashyl.dev` and run as a systemd user service (`deploy/urashyl-dev.service`). The binary reads `.env` from that directory, so `BIND_ADDR` and the Grafana settings go there.
+
+```bash
+mv ~/portfolio ~/urashyl.dev     # once, if it's checked out elsewhere
+~/urashyl.dev/deploy/deploy.sh   # build, install the unit, enable and restart it
+sudo loginctl enable-linger "$USER"   # once: keep it running after logout and start at boot
+```
+
+Re-run `deploy/deploy.sh` after pulling changes. Logs: `journalctl --user -u urashyl-dev -f`.
 
 ## Open Source & License
 

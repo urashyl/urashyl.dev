@@ -61,7 +61,7 @@ pub fn format_iso_short(iso: Option<&str>) -> String {
 
 pub fn format_epoch_ms_short(ts_ms: i64) -> String {
     match Utc.timestamp_millis_opt(ts_ms).single() {
-        Some(dt) => dt.format("%b %d · %H:%M UTC").to_string(),
+        Some(dt) => dt.format("%b %-d, %H:%M UTC").to_string(),
         None => ts_ms.to_string(),
     }
 }
@@ -160,197 +160,187 @@ fn compute_plot(
     })
 }
 
-pub fn render_sparkline(
-    points: &[TelemetryPoint],
-    series_key: &str,
-    label: &str,
-    accent_var: &str,
-) -> Markup {
-    let grad_id = format!("spark-grad-{series_key}");
-    let plot = compute_plot(points, 4.0, 276.0, 8.0, 56.0);
+/// Uptime phrased for a sentence: "41 days", "6 hours", "12 minutes".
+pub fn format_uptime_prose(seconds: Option<f64>) -> Option<String> {
+    let sec = seconds.filter(|s| s.is_finite() && *s >= 0.0)? as u64;
+    let plural = |n: u64, unit: &str| {
+        if n == 1 {
+            format!("1 {unit}")
+        } else {
+            format!("{n} {unit}s")
+        }
+    };
+    Some(if sec >= 86_400 {
+        plural(sec / 86_400, "day")
+    } else if sec >= 3_600 {
+        plural(sec / 3_600, "hour")
+    } else {
+        plural(sec / 60, "minute")
+    })
+}
 
+/// Human phrase for a Grafana time range like "6h" or "7d".
+pub fn time_range_phrase(range: &str) -> &'static str {
+    match range {
+        "1h" => "hour",
+        "3h" => "3 hours",
+        "12h" => "12 hours",
+        "24h" => "24 hours",
+        "7d" => "week",
+        _ => "6 hours",
+    }
+}
+
+/// One-sentence summary of the home server shown under the hero trace.
+pub fn live_caption(snapshot: &TelemetrySnapshot) -> String {
+    let m = &snapshot.metrics;
+    if m.cpu.points.is_empty() && m.cpu.current.is_none() {
+        return "Live numbers from the home server are unavailable right now.".to_string();
+    }
+    let mut parts = Vec::new();
+    if let Some(cpu) = m.cpu.current {
+        parts.push(format!("{cpu:.0}% CPU"));
+    }
+    if let Some(mem) = m.memory.current {
+        parts.push(format!("{mem:.0}% memory"));
+    }
+    let mut out = format!(
+        "CPU on my home server over the past {}",
+        time_range_phrase(&snapshot.time_range)
+    );
+    if !parts.is_empty() {
+        out.push_str(". Right now: ");
+        out.push_str(&parts.join(", "));
+    }
+    if let Some(up) = format_uptime_prose(m.uptime_seconds) {
+        out.push_str(&format!(", up {up}"));
+    }
+    out.push('.');
+    out
+}
+
+/// Wide, axis-free trace used under the home page intro.
+pub fn render_trace(series: &MetricSeries) -> Markup {
+    let plot = compute_plot(&series.points, 0.0, 1000.0, 10.0, 110.0);
     html! {
         svg
-            class="sparkline-svg"
-            viewBox="0 0 280 64"
+            class="trace-svg"
+            viewBox="0 0 1000 120"
             preserveAspectRatio="none"
             role="img"
-            aria-label=(format!("{label} trend"))
-            data-sparkline=(series_key)
+            aria-label=(format!("{} over time", series.label))
+            data-trace=(series.key)
         {
-            defs {
-                linearGradient id=(grad_id) x1="0" y1="0" x2="0" y2="1" {
-                    stop offset="0%" stop-color=(accent_var) stop-opacity="0.22";
-                    stop offset="100%" stop-color=(accent_var) stop-opacity="0.0";
-                }
-            }
-            line x1="4" y1="32" x2="276" y2="32" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 4";
-            line x1="4" y1="56" x2="276" y2="56" stroke="var(--border)" stroke-width="1";
-            @if let Some(p) = plot {
-                path data-chart-area="" d=(p.area_path) fill=(format!("url(#{grad_id})"));
-                polyline data-chart-line="" points=(p.polyline) fill="none" stroke=(accent_var) stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round";
-                circle data-chart-dot="" cx=(format!("{:.1}", p.last_x)) cy=(format!("{:.1}", p.last_y)) r="2.75" fill=(accent_var);
+            line class="trace-base" x1="0" y1="110" x2="1000" y2="110" vector-effect="non-scaling-stroke" {}
+            @if let Some(p) = &plot {
+                path class="trace-area" data-chart-area="" d=(p.area_path) {}
+                polyline class="trace-line" data-chart-line="" points=(p.polyline) vector-effect="non-scaling-stroke" {}
             } @else {
-                path data-chart-area="" d="" fill=(format!("url(#{grad_id})"));
-                polyline data-chart-line="" points="" fill="none" stroke=(accent_var) stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round";
-                circle data-chart-dot="" cx="-10" cy="-10" r="2.75" fill=(accent_var) class="hidden";
+                path class="trace-area" data-chart-area="" d="" {}
+                polyline class="trace-line" data-chart-line="" points="" vector-effect="non-scaling-stroke" {}
             }
         }
     }
 }
 
-pub fn render_metric_chart(series: &MetricSeries, accent_var: &str) -> Markup {
-    let grad_id = format!("chart-grad-{}", series.key);
+pub fn render_metric_chart(series: &MetricSeries) -> Markup {
     let plot = compute_plot(&series.points, 8.0, 472.0, 14.0, 134.0);
+    let empty_msg = match &series.query_error {
+        Some(err) => format!("Query failed: {err}"),
+        None => "No samples yet".to_string(),
+    };
 
     html! {
-        div class="metric-chart-wrap" {
+        div class="chart-wrap" {
             svg
-                class="metric-chart-svg"
+                class="chart-svg"
                 viewBox="0 0 480 148"
                 preserveAspectRatio="none"
                 role="img"
-                aria-label=(format!("{} time series", series.label))
+                aria-label=(format!("{} over time", series.label))
                 data-chart=(series.key)
             {
-                defs {
-                    linearGradient id=(grad_id) x1="0" y1="0" x2="0" y2="1" {
-                        stop offset="0%" stop-color=(accent_var) stop-opacity="0.24";
-                        stop offset="100%" stop-color=(accent_var) stop-opacity="0.0";
-                    }
-                }
-                line x1="8" y1="14" x2="472" y2="14" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4";
-                line x1="8" y1="74" x2="472" y2="74" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4";
-                line x1="8" y1="134" x2="472" y2="134" stroke="var(--border)" stroke-width="1";
-
-                @if let Some(p) = plot {
-                    path data-chart-area="" d=(p.area_path) fill=(format!("url(#{grad_id})"));
-                    polyline data-chart-line="" points=(p.polyline) fill="none" stroke=(accent_var) stroke-width="2" stroke-linecap="round" stroke-linejoin="round";
-                    circle data-chart-dot="" cx=(format!("{:.1}", p.last_x)) cy=(format!("{:.1}", p.last_y)) r="3.5" fill=(accent_var);
+                line class="chart-grid" x1="8" y1="74" x2="472" y2="74" vector-effect="non-scaling-stroke" {}
+                line class="chart-base" x1="8" y1="134" x2="472" y2="134" vector-effect="non-scaling-stroke" {}
+                @if let Some(p) = &plot {
+                    path class="chart-area" data-chart-area="" d=(p.area_path) {}
+                    polyline class="chart-line" data-chart-line="" points=(p.polyline) vector-effect="non-scaling-stroke" {}
+                    circle class="chart-dot" data-chart-dot="" cx=(format!("{:.1}", p.last_x)) cy=(format!("{:.1}", p.last_y)) r="3" {}
                 } @else {
-                    path data-chart-area="" d="" fill=(format!("url(#{grad_id})"));
-                    polyline data-chart-line="" points="" fill="none" stroke=(accent_var) stroke-width="2" stroke-linecap="round" stroke-linejoin="round";
-                    circle data-chart-dot="" cx="-10" cy="-10" r="3.5" fill=(accent_var) class="hidden";
+                    path class="chart-area" data-chart-area="" d="" {}
+                    polyline class="chart-line" data-chart-line="" points="" vector-effect="non-scaling-stroke" {}
+                    circle class="chart-dot hidden" data-chart-dot="" cx="-10" cy="-10" r="3" {}
                 }
             }
-
-            @if series.points.is_empty() {
-                div class="chart-empty-overlay" data-chart-empty=(series.key) {
-                    @if let Some(err) = &series.query_error {
-                        span class="mono err-text" { "Query error: " (err) }
-                    } @else {
-                        span class="mono muted-text" { "Awaiting Grafana samples" }
-                    }
-                }
-            } @else {
-                div class="chart-empty-overlay hidden" data-chart-empty=(series.key) {
-                    span class="mono muted-text" { "Awaiting Grafana samples" }
-                }
+            div class=(if series.points.is_empty() { "chart-empty" } else { "chart-empty hidden" }) data-chart-empty=(series.key) {
+                span class=(if series.query_error.is_some() { "err-text" } else { "" }) { (empty_msg) }
             }
         }
     }
 }
 
 pub fn render_topology_diagram(snapshot: &TelemetrySnapshot) -> Markup {
-    let grafana_color = match snapshot.state {
-        TelemetryState::Connected => "var(--ok)",
+    let grafana_stroke = match snapshot.state {
+        TelemetryState::Connected => "var(--up)",
         TelemetryState::Degraded => "var(--warn)",
-        TelemetryState::Error => "var(--err)",
-        TelemetryState::Unconfigured => "var(--muted)",
+        TelemetryState::Error => "var(--down)",
+        TelemetryState::Unconfigured => "var(--rule-strong)",
     };
-
-    let probes_up = snapshot
-        .service_probes
-        .iter()
-        .filter(|p| p.up == Some(true))
-        .count();
-    let probes_known = snapshot
-        .service_probes
-        .iter()
-        .filter(|p| p.up.is_some())
-        .count();
-    let service_sub = if probes_known > 0 {
-        format!("{probes_up}/{probes_known} probes healthy")
+    let probes_known = snapshot.service_probes.iter().filter(|p| p.up.is_some()).count();
+    let probes_up = snapshot.service_probes.iter().filter(|p| p.up == Some(true)).count();
+    let guests_line = if probes_known > 0 {
+        format!("{probes_up} of {probes_known} services up")
     } else {
-        format!("{} core services", HOMELAB_SERVICES.len())
+        format!("{} services", HOMELAB_SERVICES.len())
+    };
+    let host_line = match (snapshot.metrics.cpu.current, snapshot.metrics.memory.current) {
+        (Some(c), Some(m)) => format!("CPU {c:.0}%, RAM {m:.0}%"),
+        _ => "tartarus".to_string(),
     };
 
-    let pve_sub = match (snapshot.metrics.cpu.current, snapshot.metrics.memory.current) {
-        (Some(c), Some(m)) => format!("CPU {c:.0}% · RAM {m:.0}%"),
-        _ => "LXC + KVM isolation".to_string(),
+    // Boxes laid out on a single row; the observer path loops underneath.
+    let node = |x: f64, w: f64, title: &str, sub: &str, stroke: &str| {
+        html! {
+            g transform=(format!("translate({x} 24)")) {
+                rect width=(w) height="72" rx="10" fill="var(--surface)" stroke=(stroke) stroke-width="1.25" {}
+                text class="topo-title" x="16" y="32" { (title) }
+                text class="topo-sub" x="16" y="53" { (sub) }
+            }
+        }
     };
 
     html! {
-        div class="topology-card" {
-            div class="topology-head" {
-                span class="eyebrow" { "Architecture // Request & Telemetry Flow" }
-                span class="mono muted-text" style="font-size:0.75rem" {
-                    "Edge TLS → Proxmox VE → Exporters → Grafana API → Axum SSE"
+        figure class="topology" {
+            div class="topology-scroll" {
+                svg class="topology-svg" viewBox="0 0 860 196" role="img" aria-label="How requests reach the homelab and how monitoring data reaches this site" {
+                    defs {
+                        marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" {
+                            path d="M0 1 9 5 0 9z" fill="var(--muted)" {}
+                        }
+                    }
+                    (node(0.0, 150.0, "Internet", "HTTPS only", "var(--rule-strong)"))
+                    (node(196.0, 170.0, "nginx", "TLS, reverse proxy", "var(--rule-strong)"))
+                    (node(412.0, 196.0, "Proxmox VE", &host_line, "var(--rule-strong)"))
+                    (node(654.0, 206.0, "Containers and VMs", &guests_line, "var(--rule-strong)"))
+
+                    line class="topo-link" x1="150" y1="60" x2="192" y2="60" marker-end="url(#arrow)" {}
+                    line class="topo-link" x1="366" y1="60" x2="408" y2="60" marker-end="url(#arrow)" {}
+                    line class="topo-link" x1="608" y1="60" x2="650" y2="60" marker-end="url(#arrow)" {}
+
+                    path class="topo-link dashed" d="M757 96 V150 H560" marker-end="url(#arrow)" {}
+                    g transform="translate(372 128)" {
+                        rect width="184" height="44" rx="10" fill="var(--surface)" stroke=(grafana_stroke) stroke-width="1.25" {}
+                        text class="topo-title" x="16" y="27" { "Prometheus, Grafana" }
+                    }
+                    path class="topo-link dashed" d="M372 150 H248" marker-end="url(#arrow)" {}
+                    g transform="translate(96 128)" {
+                        rect width="148" height="44" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.25" {}
+                        text class="topo-title" x="16" y="27" { "This website" }
+                    }
                 }
             }
-            svg class="topology-svg" viewBox="0 0 880 210" role="img" aria-label="Homelab network and Grafana telemetry architecture" {
-                defs {
-                    marker id="arrow-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" {
-                        path d="M 0 1 L 8 5 L 0 9 z" fill="var(--muted)";
-                    }
-                    marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" {
-                        path d="M 0 1 L 8 5 L 0 9 z" fill="var(--accent)";
-                    }
-                }
-
-                // Connection paths
-                line x1="176" y1="68" x2="226" y2="68" stroke="var(--border-strong)" stroke-width="1.5" marker-end="url(#arrow-muted)";
-                line x1="396" y1="68" x2="446" y2="68" stroke="var(--border-strong)" stroke-width="1.5" marker-end="url(#arrow-muted)";
-                line x1="636" y1="68" x2="686" y2="68" stroke="var(--border-strong)" stroke-width="1.5" marker-end="url(#arrow-muted)";
-
-                // Telemetry feedback loop (bottom path)
-                path d="M 541 112 L 541 154 L 686 154" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrow-accent)";
-                path d="M 775 112 L 775 128" fill="none" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="3 3";
-
-                // Node 1: Edge Proxy
-                g transform="translate(16, 26)" {
-                    rect width="160" height="84" rx="4" fill="var(--surface-alt)" stroke="var(--border-strong)";
-                    text x="14" y="26" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1" { "01 / EDGE" }
-                    text x="14" y="48" fill="var(--ink)" font-family="Instrument Sans, sans-serif" font-size="14" font-weight="600" { "Caddy TLS Proxy" }
-                    text x="14" y="68" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="11" { "HTTPS · Reverse Proxy" }
-                }
-
-                // Node 2: Proxmox Host
-                g transform="translate(226, 26)" {
-                    rect width="170" height="84" rx="4" fill="var(--surface-alt)" stroke="var(--border-strong)";
-                    text x="14" y="26" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1" { "02 / HYPERVISOR" }
-                    text x="14" y="48" fill="var(--ink)" font-family="Instrument Sans, sans-serif" font-size="14" font-weight="600" { "Proxmox VE Host" }
-                    text x="14" y="68" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="11" { (pve_sub) }
-                }
-
-                // Node 3: Workloads
-                g transform="translate(446, 26)" {
-                    rect width="190" height="84" rx="4" fill="var(--surface-alt)" stroke="var(--border-strong)";
-                    text x="14" y="26" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1" { "03 / WORKLOADS" }
-                    text x="14" y="48" fill="var(--ink)" font-family="Instrument Sans, sans-serif" font-size="14" font-weight="600" { "LXC & KVM Stack" }
-                    text x="14" y="68" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="11" { (service_sub) }
-                }
-
-                // Node 4: Grafana API
-                g transform="translate(686, 26)" {
-                    rect width="178" height="84" rx="4" fill="var(--surface-alt)" stroke=(grafana_color);
-                    circle cx="158" cy="22" r="4" fill=(grafana_color);
-                    text x="14" y="26" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1" { "04 / GRAFANA" }
-                    text x="14" y="48" fill="var(--ink)" font-family="Instrument Sans, sans-serif" font-size="14" font-weight="600" { "Grafana HTTP API" }
-                    text x="14" y="68" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="11" { "State: " (snapshot.state.label()) }
-                }
-
-                // Node 5: urashyl.dev Axum
-                g transform="translate(686, 128)" {
-                    rect width="178" height="62" rx="4" fill="var(--surface)" stroke="var(--accent)";
-                    text x="14" y="25" fill="var(--accent)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1" { "05 / PORTFOLIO" }
-                    text x="14" y="46" fill="var(--ink)" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" { "urashyl.dev · Axum SSE" }
-                }
-
-                // Caption strip
-                text x="16" y="160" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="11" {
-                    "Telemetry poll: Bearer token stays server-side · Browser receives sanitized JSON + SSE frames"
-                }
+            figcaption {
+                "Requests come in through nginx and land on a single Proxmox host. Prometheus scrapes the host through prometheus-pve-exporter; this site reads Grafana's API on a timer and never exposes the token or internal addresses."
             }
         }
     }

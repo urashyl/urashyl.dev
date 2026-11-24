@@ -1,0 +1,20 @@
+[Unit]
+Description=urashyl.dev portfolio server
+Documentation=https://github.com/urashyl/urashyl.dev
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# The server reads .env from its working directory (BIND_ADDR, GRAFANA_*).
+WorkingDirectory=%h/urashyl.dev
+ExecStart=%h/urashyl.dev/target/release/urashyl-portfolio
+Environment=RUST_LOG=urashyl_portfolio=info
+Restart=always
+RestartSec=3
+# SIGTERM triggers a graceful shutdown; don't wait long on open SSE streams.
+TimeoutStopSec=10
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

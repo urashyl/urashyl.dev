@@ -1,759 +1,453 @@
 (() => {
-  const root = document.documentElement;
-  const themeBtn = document.getElementById('theme-toggle');
-  const themeLabel = document.getElementById('theme-label');
+  'use strict';
 
-  function syncThemeUI() {
-    const current = root.dataset.theme === 'light' ? 'light' : 'dark';
-    if (themeLabel) {
-      themeLabel.textContent = current === 'light' ? 'Dark' : 'Light';
-    }
+  const root = document.documentElement;
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+  const el = (tag, cls, text) => {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  };
+
+  // ---------------------------------------------------------------- theme
+
+  function currentTheme() {
+    if (root.dataset.theme === 'light' || root.dataset.theme === 'dark') return root.dataset.theme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
   function toggleTheme() {
-    const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
     root.dataset.theme = next;
     try {
       localStorage.setItem('urashyl-theme', next);
     } catch {
-      // Ignore storage failures
-    }
-    syncThemeUI();
-  }
-
-  syncThemeUI();
-  if (themeBtn) {
-    themeBtn.addEventListener('click', toggleTheme);
-  }
-
-  // Mobile menu
-  const mobileToggle = document.getElementById('mobile-nav-toggle');
-  const mobileNav = document.getElementById('mobile-nav');
-  if (mobileToggle && mobileNav) {
-    mobileToggle.addEventListener('click', () => {
-      const open = mobileNav.classList.toggle('hidden') === false;
-      mobileToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-  }
-
-  // Copy buttons
-  function bindCopy(btnId, labelId, getText, defaultText, copiedText) {
-    const btn = document.getElementById(btnId);
-    const lbl = labelId ? document.getElementById(labelId) : btn;
-    if (!btn || !lbl) return;
-    btn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(getText());
-        lbl.textContent = copiedText;
-        setTimeout(() => {
-          lbl.textContent = defaultText;
-        }, 1800);
-      } catch {
-        // Ignore clipboard errors in restricted contexts
-      }
-    });
-  }
-
-  bindCopy(
-    'copy-domain-btn',
-    'copy-domain-label',
-    () => 'https://urashyl.dev',
-    'Copy urashyl.dev',
-    'Copied URL'
-  );
-  bindCopy(
-    'copy-env-btn',
-    'copy-env-btn',
-    () => {
-      const el = document.getElementById('env-snippet');
-      return el ? el.textContent || '' : '';
-    },
-    'Copy .env',
-    'Copied'
-  );
-
-  // Formatting helpers matching Rust server output
-  function stateLabel(state) {
-    switch (state) {
-      case 'connected':
-        return 'Live';
-      case 'degraded':
-        return 'Degraded';
-      case 'error':
-        return 'Error';
-      default:
-        return 'Standby';
+      /* storage unavailable */
     }
   }
 
-  function stateClass(state) {
-    switch (state) {
-      case 'connected':
-        return 'state-live';
-      case 'degraded':
-        return 'state-degraded';
-      case 'error':
-        return 'state-error';
-      default:
-        return 'state-standby';
+  $('#theme-toggle')?.addEventListener('click', toggleTheme);
+
+  // ------------------------------------------------------------ clipboard
+
+  const copyBtn = $('#copy-env-btn');
+  copyBtn?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#env-snippet')?.textContent || '');
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => (copyBtn.textContent = 'Copy'), 1600);
+    } catch {
+      /* clipboard blocked */
     }
+  });
+
+  // ----------------------------------------------------------- formatting
+
+  const STATE = {
+    connected: ['state-live', 'Live', 'Everything is reporting normally.'],
+    degraded: ['state-degraded', 'Degraded', 'Some metrics are missing, so parts of this page may be empty.'],
+    error: ['state-error', 'Error', 'The last attempt to read from Grafana failed.'],
+    unconfigured: [
+      'state-standby',
+      'Standby',
+      "Monitoring isn't connected on this server, so there's nothing to show yet.",
+    ],
+  };
+  const stateInfo = (s) => STATE[s] || STATE.unconfigured;
+  const STATE_CLASSES = ['state-live', 'state-degraded', 'state-error', 'state-standby'];
+
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+  function fmtMetric(v, unit) {
+    if (!isNum(v)) return '—';
+    if (unit === '%') return `${v.toFixed(1)}%`;
+    if (unit === 'guests') return String(Math.round(v));
+    if (unit === 'MB/s') return v >= 100 ? `${v.toFixed(0)} MB/s` : `${v.toFixed(2)} MB/s`;
+    if (!unit) return v.toFixed(2);
+    return `${v.toFixed(1)} ${unit}`;
   }
 
-  function formatMetricValue(val, unit) {
-    if (typeof val !== 'number' || !Number.isFinite(val)) return '—';
-    if (unit === '%') return `${val.toFixed(1)}%`;
-    if (unit === 'guests') return String(Math.round(val));
-    if (unit === 'MB/s') return val >= 100 ? `${val.toFixed(0)} MB/s` : `${val.toFixed(2)} MB/s`;
-    if (!unit) return val.toFixed(2);
-    return `${val.toFixed(1)} ${unit}`;
+  function fmtUptime(secs) {
+    if (!isNum(secs) || secs < 0) return '—';
+    const t = Math.floor(secs);
+    const d = Math.floor(t / 86400);
+    const h = Math.floor((t % 86400) / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
   }
 
-  function formatUptime(secs) {
-    if (typeof secs !== 'number' || !Number.isFinite(secs) || secs < 0) return '—';
-    const total = Math.floor(secs);
-    const days = Math.floor(total / 86400);
-    const hours = Math.floor((total % 86400) / 3600);
-    const mins = Math.floor((total % 3600) / 60);
-    if (days > 0) return `${days}d ${hours}h ${mins}m`;
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
+  function uptimeProse(secs) {
+    if (!isNum(secs) || secs < 0) return null;
+    const plural = (n, u) => (n === 1 ? `1 ${u}` : `${n} ${u}s`);
+    if (secs >= 86400) return plural(Math.floor(secs / 86400), 'day');
+    if (secs >= 3600) return plural(Math.floor(secs / 3600), 'hour');
+    return plural(Math.floor(secs / 60), 'minute');
   }
 
-  function formatIsoShort(iso) {
-    if (!iso) return 'never';
+  const RANGE = { '1h': 'hour', '3h': '3 hours', '12h': '12 hours', '24h': '24 hours', '7d': 'week' };
+
+  function liveCaption(snap) {
+    const m = snap.metrics || {};
+    const cpu = m.cpu || {};
+    if ((!cpu.points || cpu.points.length === 0) && !isNum(cpu.current)) {
+      return 'Live numbers from the home server are unavailable right now.';
+    }
+    let out = `CPU on my home server over the past ${RANGE[snap.time_range] || '6 hours'}`;
+    const parts = [];
+    if (isNum(cpu.current)) parts.push(`${cpu.current.toFixed(0)}% CPU`);
+    if (m.memory && isNum(m.memory.current)) parts.push(`${m.memory.current.toFixed(0)}% memory`);
+    if (parts.length) out += `. Right now: ${parts.join(', ')}`;
+    const up = uptimeProse(m.uptime_seconds);
+    if (up) out += `, up ${up}`;
+    return `${out}.`;
+  }
+
+  function fmtIso(iso) {
+    if (iso == null) return 'never';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return String(iso);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
   }
+
+  function fmtEventTime(ms) {
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return String(ms);
+    const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const p = (n) => String(n).padStart(2, '0');
+    return `${mon} ${d.getUTCDate()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+  }
+
+  // --------------------------------------------------------------- charts
 
   function computePlot(points, xMin, xMax, yTop, yBottom) {
     if (!Array.isArray(points) || points.length === 0) return null;
+    const f = (n) => n.toFixed(1);
     if (points.length === 1) {
-      const midY = ((yTop + yBottom) * 0.5).toFixed(1);
+      const mid = (yTop + yBottom) / 2;
       return {
-        polyline: `${xMin.toFixed(1)},${midY} ${xMax.toFixed(1)},${midY}`,
-        area: `M ${xMin.toFixed(1)} ${yBottom.toFixed(1)} L ${xMin.toFixed(1)} ${midY} L ${xMax.toFixed(1)} ${midY} L ${xMax.toFixed(1)} ${yBottom.toFixed(1)} Z`,
-        lastX: xMax.toFixed(1),
-        lastY: midY,
+        line: `${f(xMin)},${f(mid)} ${f(xMax)},${f(mid)}`,
+        area: `M ${f(xMin)} ${f(yBottom)} L ${f(xMin)} ${f(mid)} L ${f(xMax)} ${f(mid)} L ${f(xMax)} ${f(yBottom)} Z`,
+        lastX: f(xMax),
+        lastY: f(mid),
       };
     }
-
-    let minV = Infinity;
-    let maxV = -Infinity;
+    let lo = Infinity;
+    let hi = -Infinity;
     for (const p of points) {
-      if (p.value < minV) minV = p.value;
-      if (p.value > maxV) maxV = p.value;
+      lo = Math.min(lo, p.value);
+      hi = Math.max(hi, p.value);
     }
-    const span = Math.abs(maxV - minV);
-    const vLo = span < 1e-6 ? minV - 1 : minV - span * 0.1;
-    const vHi = span < 1e-6 ? maxV + 1 : maxV + span * 0.1;
-    const vRange = Math.max(vHi - vLo, 1e-6);
-
-    const firstTs = points[0].ts_ms;
-    const lastTs = points[points.length - 1].ts_ms;
-    const useIdx = lastTs <= firstTs;
-    const w = xMax - xMin;
-    const h = yBottom - yTop;
-
-    const coords = points.map((p, idx) => {
-      const nx = useIdx ? idx / (points.length - 1) : (p.ts_ms - firstTs) / (lastTs - firstTs);
-      const ny = Math.min(1, Math.max(0, (p.value - vLo) / vRange));
-      return [xMin + nx * w, yBottom - ny * h];
+    const span = Math.abs(hi - lo);
+    const vLo = span < 1e-6 ? lo - 1 : lo - span * 0.1;
+    const vHi = span < 1e-6 ? hi + 1 : hi + span * 0.1;
+    const range = Math.max(vHi - vLo, 1e-6);
+    const t0 = points[0].ts_ms;
+    const t1 = points[points.length - 1].ts_ms;
+    const byIdx = t1 <= t0;
+    const coords = points.map((p, i) => {
+      const nx = byIdx ? i / (points.length - 1) : (p.ts_ms - t0) / (t1 - t0);
+      const ny = Math.min(1, Math.max(0, (p.value - vLo) / range));
+      return [xMin + nx * (xMax - xMin), yBottom - ny * (yBottom - yTop)];
     });
-
-    const polyline = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
     const first = coords[0];
     const last = coords[coords.length - 1];
-    let area = `M ${first[0].toFixed(1)} ${yBottom.toFixed(1)}`;
-    for (const [x, y] of coords) {
-      area += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }
-    area += ` L ${last[0].toFixed(1)} ${yBottom.toFixed(1)} Z`;
-
+    let area = `M ${f(first[0])} ${f(yBottom)}`;
+    for (const [x, y] of coords) area += ` L ${f(x)} ${f(y)}`;
+    area += ` L ${f(last[0])} ${f(yBottom)} Z`;
     return {
-      polyline,
+      line: coords.map(([x, y]) => `${f(x)},${f(y)}`).join(' '),
       area,
-      lastX: last[0].toFixed(1),
-      lastY: last[1].toFixed(1),
+      lastX: f(last[0]),
+      lastY: f(last[1]),
     };
   }
 
-  function updateSvgElement(svg, points, xMin, xMax, yTop, yBottom, emptyOverlay, queryError) {
-    if (!svg) return;
-    const line = svg.querySelector('[data-chart-line]');
-    const area = svg.querySelector('[data-chart-area]');
-    const dot = svg.querySelector('[data-chart-dot]');
-    const plot = computePlot(points, xMin, xMax, yTop, yBottom);
-
-    if (plot) {
-      if (line) line.setAttribute('points', plot.polyline);
-      if (area) area.setAttribute('d', plot.area);
-      if (dot) {
+  function drawSvg(svg, points, box) {
+    const plot = computePlot(points, ...box);
+    const line = $('[data-chart-line]', svg);
+    const area = $('[data-chart-area]', svg);
+    const dot = $('[data-chart-dot]', svg);
+    line?.setAttribute('points', plot ? plot.line : '');
+    area?.setAttribute('d', plot ? plot.area : '');
+    if (dot) {
+      if (plot) {
         dot.setAttribute('cx', plot.lastX);
         dot.setAttribute('cy', plot.lastY);
-        dot.classList.remove('hidden');
       }
-      if (emptyOverlay) emptyOverlay.classList.add('hidden');
-    } else {
-      if (line) line.setAttribute('points', '');
-      if (area) area.setAttribute('d', '');
-      if (dot) dot.classList.add('hidden');
-      if (emptyOverlay) {
-        const msg = document.createElement('span');
-        if (queryError) {
-          msg.className = 'mono err-text';
-          msg.textContent = `Query error: ${queryError}`;
-        } else {
-          msg.className = 'mono muted-text';
-          msg.textContent = 'Awaiting Grafana samples';
-        }
-        emptyOverlay.replaceChildren(msg);
-        emptyOverlay.classList.remove('hidden');
-      }
+      dot.classList.toggle('hidden', !plot);
     }
+    return Boolean(plot);
   }
 
-  function swapStateClass(el, state) {
-    if (!el) return;
-    el.classList.remove('state-live', 'state-degraded', 'state-error', 'state-standby');
-    el.classList.add(stateClass(state));
+  // --------------------------------------------------------- live updates
+
+  function probeInfo(up) {
+    if (up === true) return ['probe-up', 'Up'];
+    if (up === false) return ['probe-down', 'Down'];
+    return ['probe-unknown', 'Not monitored'];
   }
 
-  function applyTelemetrySnapshot(snap) {
+  function setText(sel, text) {
+    $$(sel).forEach((n) => (n.textContent = text));
+  }
+
+  function apply(snap) {
     if (!snap || typeof snap !== 'object') return;
+    const [cls, label, sentence] = stateInfo(snap.state);
+    const m = snap.metrics || {};
 
-    // Header pill
-    const pill = document.querySelector('[data-telemetry-pill]');
-    const pillTxt = document.querySelector('[data-telemetry-pill-text]');
-    if (pill) {
-      swapStateClass(pill, snap.state);
-      pill.dataset.telemetryState = snap.state;
-    }
-    if (pillTxt) {
-      const cpuCur = snap.metrics && snap.metrics.cpu ? snap.metrics.cpu.current : null;
-      if (snap.state === 'connected' && typeof cpuCur === 'number') {
-        pillTxt.textContent = `Live · ${cpuCur.toFixed(0)}% CPU`;
-      } else {
-        pillTxt.textContent = `Grafana: ${stateLabel(snap.state)}`;
-      }
-    }
-
-    // Footer & shared sync timestamps
-    const footerState = document.querySelector('[data-footer-state]');
-    if (footerState) {
-      swapStateClass(footerState, snap.state);
-      footerState.textContent = `Grafana: ${stateLabel(snap.state)}`;
-    }
-    document.querySelectorAll('[data-last-sync]').forEach((el) => {
-      el.textContent = formatIsoShort(snap.last_synced_at);
+    $$('[data-state-dot]').forEach((n) => {
+      n.classList.remove(...STATE_CLASSES);
+      n.classList.add(cls);
+      if (n.title) n.title = `Server: ${label}`;
     });
-
-    // Home panel state
-    const homeBadge = document.querySelector('[data-home-state-badge]');
-    const homeLabel = document.querySelector('[data-home-state-label]');
-    const homeDs = document.querySelector('[data-home-ds]');
-    if (homeBadge) swapStateClass(homeBadge, snap.state);
-    if (homeLabel) homeLabel.textContent = stateLabel(snap.state);
-    if (homeDs) {
-      homeDs.textContent = snap.active_datasource
-        ? `Source: ${snap.active_datasource.name} (${snap.active_datasource.ds_type})`
-        : 'Grafana API · awaiting key';
-    }
-
-    // Telemetry page header
-    const bannerBadge = document.querySelector('[data-telemetry-banner-badge]');
-    const bannerLabel = document.querySelector('[data-telemetry-banner-label]');
-    if (bannerBadge) swapStateClass(bannerBadge, snap.state);
-    if (bannerLabel) bannerLabel.textContent = stateLabel(snap.state);
-
-    const verEl = document.querySelector('[data-grafana-version]');
-    if (verEl) {
-      verEl.textContent = snap.grafana_version
-        ? `v${snap.grafana_version}${snap.org_name ? ` · ${snap.org_name}` : ''}`
-        : 'Not connected';
-    }
-
-    const activeDsEl = document.querySelector('[data-active-datasource]');
-    if (activeDsEl) {
-      activeDsEl.textContent = snap.active_datasource
-        ? `${snap.active_datasource.name} (${snap.active_datasource.ds_type})`
-        : 'Auto-discovery';
-    }
-
-    const errBanner = document.querySelector('[data-telemetry-error]');
-    if (errBanner) {
-      if (snap.last_error) {
-        errBanner.textContent = `Sync Error: ${snap.last_error}`;
-        errBanner.classList.remove('hidden');
-      } else {
-        errBanner.textContent = '';
-        errBanner.classList.add('hidden');
-      }
-    }
-
-    // Uptime & counters
-    const uptimeVal = snap.metrics ? snap.metrics.uptime_seconds : null;
-    document.querySelectorAll('[data-uptime-val]').forEach((el) => {
-      if (typeof uptimeVal === 'number') {
-        el.textContent = formatUptime(uptimeVal);
-      } else if (!el.textContent || el.textContent.trim() === '—') {
-        el.textContent = '—';
-      }
+    $$('[data-status-pill]').forEach((n) => {
+      n.classList.remove(...STATE_CLASSES);
+      n.classList.add(cls);
     });
+    setText('[data-status-label]', label);
+    setText('[data-status-sentence]', sentence);
+    setText('[data-live-caption]', liveCaption(snap));
+    setText('[data-last-sync]', fmtIso(snap.last_synced_at));
 
-    const firingAlerts = Array.isArray(snap.alerts)
+    const err = $('[data-telemetry-error]');
+    if (err) {
+      err.textContent = snap.last_error || '';
+      err.classList.toggle('hidden', !snap.last_error);
+    }
+
+    if (isNum(m.uptime_seconds)) setText('[data-uptime-val]', fmtUptime(m.uptime_seconds));
+
+    const firing = Array.isArray(snap.alerts)
       ? snap.alerts.filter((a) => String(a.state || '').toLowerCase() !== 'suppressed').length
       : 0;
-    document.querySelectorAll('[data-alerts-count]').forEach((el) => {
-      el.textContent = el.closest('.panel-footer') ? `${firingAlerts} active` : String(firingAlerts);
-    });
+    setText('[data-alerts-count]', String(firing));
+    if (Array.isArray(snap.dashboards)) setText('[data-dash-count]', String(snap.dashboards.length));
+    setText('[data-grafana-version]', snap.grafana_version ? `v${snap.grafana_version}` : '—');
+    setText('[data-active-datasource]', snap.active_datasource ? snap.active_datasource.name : '—');
 
-    const dbEl = document.querySelector('[data-grafana-db]');
-    if (dbEl) dbEl.textContent = snap.grafana_database || '—';
-    const dsCountEl = document.querySelector('[data-ds-count]');
-    if (dsCountEl && Array.isArray(snap.datasources)) dsCountEl.textContent = String(snap.datasources.length);
-    const dashCountEl = document.querySelector('[data-dash-count]');
-    if (dashCountEl && Array.isArray(snap.dashboards)) dashCountEl.textContent = String(snap.dashboards.length);
-
-    // Homelab KPI
-    const hlLoad = document.querySelector('[data-homelab-load]');
-    const hlMem = document.querySelector('[data-homelab-mem]');
-    if (hlLoad && snap.metrics && snap.metrics.cpu && typeof snap.metrics.cpu.current === 'number') {
-      hlLoad.textContent = `${snap.metrics.cpu.current.toFixed(1)}% CPU`;
-    }
-    if (hlMem && snap.metrics && snap.metrics.memory && typeof snap.metrics.memory.current === 'number') {
-      hlMem.textContent = `Memory ${snap.metrics.memory.current.toFixed(1)}% · Uptime ${formatUptime(uptimeVal)}`;
+    const stats = $('[data-homelab-stats]');
+    if (stats && m.cpu && isNum(m.cpu.current) && m.memory && isNum(m.memory.current)) {
+      stats.textContent = `Right now the host is at ${m.cpu.current.toFixed(0)}% CPU and ${m.memory.current.toFixed(0)}% memory, and has been up for ${fmtUptime(m.uptime_seconds)}.`;
     }
 
-    // Metric series cards & charts
-    if (snap.metrics) {
-      for (const key of ['cpu', 'memory', 'disk', 'load', 'network']) {
-        const series = snap.metrics[key];
-        if (!series) continue;
-        document.querySelectorAll(`[data-metric-title="${key}"]`).forEach((el) => {
-          if (series.label) el.textContent = series.label;
-        });
-        document.querySelectorAll(`[data-metric-short-label="${key}"]`).forEach((el) => {
-          el.textContent = series.unit === 'guests' ? 'GUESTS' : key.toUpperCase();
-        });
-        document.querySelectorAll(`[data-metric-value="${key}"]`).forEach((el) => {
-          el.textContent = formatMetricValue(series.current, series.unit);
-        });
-        document.querySelectorAll(`[data-metric-min="${key}"]`).forEach((el) => {
-          el.textContent = formatMetricValue(series.min, series.unit);
-        });
-        document.querySelectorAll(`[data-metric-avg="${key}"]`).forEach((el) => {
-          el.textContent = formatMetricValue(series.avg, series.unit);
-        });
-        document.querySelectorAll(`[data-metric-max="${key}"]`).forEach((el) => {
-          el.textContent = formatMetricValue(series.max, series.unit);
-        });
-        document.querySelectorAll(`svg[data-sparkline="${key}"]`).forEach((svg) => {
-          updateSvgElement(svg, series.points, 4, 276, 8, 56, null, null);
-        });
-        document.querySelectorAll(`svg[data-chart="${key}"]`).forEach((svg) => {
-          const empty = document.querySelector(`[data-chart-empty="${key}"]`);
-          updateSvgElement(svg, series.points, 8, 472, 14, 134, empty, series.query_error || null);
-        });
-      }
-    }
-
-    // Service probe badges across Home & Homelab
-    if (Array.isArray(snap.service_probes)) {
-      const known = snap.service_probes.filter((p) => typeof p.up === 'boolean');
-      const upCount = known.filter((p) => p.up === true).length;
-      document.querySelectorAll('[data-probes-summary]').forEach((el) => {
-        el.textContent = known.length > 0 ? `${upCount}/${known.length} up` : `${snap.service_probes.length} services`;
+    for (const key of ['cpu', 'memory', 'disk', 'load', 'network']) {
+      const s = m[key];
+      if (!s) continue;
+      if (key === 'load') setText('[data-metric-title="load"]', s.unit === 'guests' ? 'Running guests' : 'Load average');
+      setText(`[data-metric-value="${key}"]`, fmtMetric(s.current, s.unit));
+      setText(`[data-metric-min="${key}"]`, fmtMetric(s.min, s.unit));
+      setText(`[data-metric-avg="${key}"]`, fmtMetric(s.avg, s.unit));
+      setText(`[data-metric-max="${key}"]`, fmtMetric(s.max, s.unit));
+      $$(`svg[data-trace="${key}"]`).forEach((svg) => drawSvg(svg, s.points, [0, 1000, 10, 110]));
+      $$(`svg[data-chart="${key}"]`).forEach((svg) => {
+        const drawn = drawSvg(svg, s.points, [8, 472, 14, 134]);
+        const empty = $(`[data-chart-empty="${key}"]`);
+        if (empty) {
+          empty.classList.toggle('hidden', drawn);
+          if (!drawn) {
+            empty.replaceChildren(
+              el('span', s.query_error ? 'err-text' : '', s.query_error ? `Query failed: ${s.query_error}` : 'No samples yet')
+            );
+          }
+        }
       });
+    }
 
+    if (Array.isArray(snap.service_probes)) {
       for (const probe of snap.service_probes) {
-        document.querySelectorAll(`[data-service-badge="${probe.service_id}"]`).forEach((badge) => {
-          badge.classList.remove('probe-up', 'probe-down', 'probe-unknown');
-          if (probe.up === true) {
-            badge.classList.add('probe-up');
-            badge.textContent = 'UP';
-          } else if (probe.up === false) {
-            badge.classList.add('probe-down');
-            badge.textContent = 'DOWN';
-          } else {
-            badge.classList.add('probe-unknown');
-            badge.textContent = 'UNMONITORED';
-          }
-        });
-        document.querySelectorAll(`[data-service-target="${probe.service_id}"]`).forEach((t) => {
-          if (probe.target) {
-            t.textContent = `Probe target: ${probe.target}`;
-            t.classList.remove('hidden');
-          }
+        const [pcls, ptxt] = probeInfo(probe.up);
+        $$(`[data-service-badge="${probe.service_id}"]`).forEach((b) => {
+          b.className = `probe ${pcls}`;
+          b.textContent = ptxt;
         });
       }
-
-      const probesBody = document.querySelector('[data-probes-body]');
-      if (probesBody) {
-        probesBody.replaceChildren();
-        for (const probe of snap.service_probes) {
-          const tr = document.createElement('tr');
-          const tdName = document.createElement('td');
-          tdName.className = 'mono';
-          tdName.textContent = probe.name;
-
-          const tdSource = document.createElement('td');
-          tdSource.className = 'mono muted-text';
-          tdSource.textContent = probe.source;
-
-          const tdTarget = document.createElement('td');
-          tdTarget.className = 'mono muted-text';
-          tdTarget.textContent = probe.target || '—';
-
-          const tdStatus = document.createElement('td');
-          const badge = document.createElement('span');
-          const cls = probe.up === true ? 'probe-up' : probe.up === false ? 'probe-down' : 'probe-unknown';
-          badge.className = `probe-badge mono ${cls}`;
-          badge.textContent = probe.up === true ? 'UP' : probe.up === false ? 'DOWN' : 'UNMONITORED';
-          tdStatus.appendChild(badge);
-
-          tr.append(tdName, tdSource, tdTarget, tdStatus);
-          probesBody.appendChild(tr);
-        }
+      const body = $('[data-probes-body]');
+      if (body) {
+        body.replaceChildren(
+          ...snap.service_probes.map((probe) => {
+            const [pcls, ptxt] = probeInfo(probe.up);
+            const tr = el('tr');
+            const status = el('td');
+            status.appendChild(el('span', `probe ${pcls}`, ptxt));
+            tr.append(el('td', '', probe.name), el('td', 'muted', probe.source), status);
+            return tr;
+          })
+        );
       }
     }
 
-    // Alerts list on Telemetry console
-    const alertsBody = document.querySelector('[data-alerts-body]');
+    const alertsBody = $('[data-alerts-body]');
     if (alertsBody && Array.isArray(snap.alerts)) {
-      alertsBody.replaceChildren();
       if (snap.alerts.length === 0) {
-        const wrap = document.createElement('div');
-        wrap.className = 'empty-note';
-        const p = document.createElement('p');
-        p.className = 'card-desc';
-        p.textContent = snap.configured
-          ? 'No alerts reported by Grafana Alertmanager.'
-          : 'Waiting for Grafana API connection.';
-        wrap.appendChild(p);
-        alertsBody.appendChild(wrap);
+        alertsBody.replaceChildren(
+          el('p', 'muted', snap.configured ? 'No alerts are firing.' : 'Alerts appear here once monitoring is connected.')
+        );
       } else {
-        const ul = document.createElement('ul');
-        ul.className = 'alert-list';
-        for (const alert of snap.alerts) {
-          const li = document.createElement('li');
-          li.className = 'alert-row';
-          const top = document.createElement('div');
-          top.className = 'alert-top';
-          const name = document.createElement('strong');
-          name.className = 'mono';
-          name.textContent = alert.name;
-          const sev = document.createElement('span');
-          sev.className = 'mono alert-sev';
-          sev.textContent = `${alert.severity} · ${alert.state}`;
-          top.append(name, sev);
-          li.appendChild(top);
-          if (alert.summary) {
-            const sum = document.createElement('p');
-            sum.className = 'card-desc';
-            sum.textContent = alert.summary;
-            li.appendChild(sum);
-          }
+        const ul = el('ul', 'plain-list');
+        for (const a of snap.alerts) {
+          const li = el('li', 'alert');
+          li.append(el('strong', '', a.name), el('span', 'muted', ` ${a.severity}, ${a.state}`));
+          if (a.summary) li.appendChild(el('p', '', a.summary));
           ul.appendChild(li);
         }
-        alertsBody.appendChild(ul);
+        alertsBody.replaceChildren(ul);
       }
     }
 
-    // Dashboards list on Telemetry console
-    const dashBody = document.querySelector('[data-dashboards-body]');
-    if (dashBody && Array.isArray(snap.dashboards)) {
-      dashBody.replaceChildren();
-      if (snap.dashboards.length === 0) {
-        const p = document.createElement('p');
-        p.className = 'card-desc';
-        p.textContent = 'No dashboards indexed yet.';
-        dashBody.appendChild(p);
-      } else {
-        const ul = document.createElement('ul');
-        ul.className = 'dash-list';
-        for (const d of snap.dashboards.slice(0, 10)) {
-          const li = document.createElement('li');
-          li.className = 'dash-row';
-          const rowTop = document.createElement('div');
-          const safeUrl =
-            typeof d.url === 'string' &&
-            (d.url.startsWith('https://') || d.url.startsWith('http://'))
-              ? d.url
-              : null;
-          if (safeUrl) {
-            const a = document.createElement('a');
-            a.href = safeUrl;
-            a.target = '_blank';
-            a.rel = 'noreferrer';
-            a.className = 'mono table-title-link';
-            a.textContent = d.title;
-            rowTop.appendChild(a);
-          } else {
-            const span = document.createElement('span');
-            span.className = 'mono';
-            span.textContent = d.title;
-            rowTop.appendChild(span);
-          }
-          if (d.folder_title) {
-            const folder = document.createElement('span');
-            folder.className = 'mono muted-text';
-            folder.style.marginLeft = '0.5rem';
-            folder.style.fontSize = '0.75rem';
-            folder.textContent = `[${d.folder_title}]`;
-            rowTop.appendChild(folder);
-          }
-          li.appendChild(rowTop);
-          if (Array.isArray(d.tags) && d.tags.length > 0) {
-            const tags = document.createElement('div');
-            tags.className = 'tag-row';
-            tags.style.marginTop = '0.35rem';
-            for (const t of d.tags) {
-              const tag = document.createElement('span');
-              tag.className = 'tag';
-              tag.textContent = t;
-              tags.appendChild(tag);
-            }
-            li.appendChild(tags);
-          }
-          ul.appendChild(li);
-        }
-        dashBody.appendChild(ul);
-      }
-    }
-
-    // Annotations list on Telemetry console
-    const annBody = document.querySelector('[data-annotations-body]');
+    const annBody = $('[data-annotations-body]');
     if (annBody && Array.isArray(snap.annotations)) {
-      annBody.replaceChildren();
       if (snap.annotations.length === 0) {
-        const p = document.createElement('p');
-        p.className = 'card-desc';
-        p.textContent = 'No Grafana annotations available.';
-        annBody.appendChild(p);
+        annBody.replaceChildren(el('p', 'muted', 'Nothing logged in this window.'));
       } else {
-        const ul = document.createElement('ul');
-        ul.className = 'annotation-list';
-        for (const ann of snap.annotations) {
-          const li = document.createElement('li');
-          li.className = 'annotation-item';
-          const ts = document.createElement('div');
-          ts.className = 'mono muted-text';
-          ts.style.fontSize = '0.72rem';
-          ts.textContent = formatIsoShort(ann.time_ms);
-          const txt = document.createElement('p');
-          txt.className = 'annotation-text';
-          txt.textContent = ann.text;
-          li.append(ts, txt);
-          if (Array.isArray(ann.tags) && ann.tags.length > 0) {
-            const tags = document.createElement('div');
-            tags.className = 'tag-row';
-            for (const t of ann.tags) {
-              const tag = document.createElement('span');
-              tag.className = 'tag';
-              tag.textContent = t;
-              tags.appendChild(tag);
-            }
-            li.appendChild(tags);
-          }
+        const ul = el('ul', 'plain-list events');
+        for (const ann of snap.annotations.slice(0, 8)) {
+          const li = el('li');
+          li.append(el('time', 'muted tabular', fmtEventTime(ann.time_ms)), el('span', '', ann.text));
           ul.appendChild(li);
         }
-        annBody.appendChild(ul);
+        annBody.replaceChildren(ul);
       }
     }
 
-    // Diagnostics list on Telemetry console
-    const diagList = document.querySelector('[data-diagnostics-list]');
-    if (diagList && Array.isArray(snap.diagnostics)) {
-      diagList.replaceChildren();
-      for (const msg of snap.diagnostics) {
-        const li = document.createElement('li');
-        li.className = 'mono';
-        li.style.fontSize = '0.78rem';
-        li.textContent = msg;
-        diagList.appendChild(li);
-      }
+    const diag = $('[data-diagnostics-list]');
+    if (diag && Array.isArray(snap.diagnostics)) {
+      diag.replaceChildren(...snap.diagnostics.map((d) => el('li', '', d)));
     }
   }
 
-  // Subscribe to SSE telemetry stream
-  const sseIndicator = document.getElementById('sse-indicator');
-  if (typeof EventSource !== 'undefined') {
+  const wantsLive = $('[data-state-dot], [data-live], [data-status-pill], [data-service-badge], [data-metric-card]');
+  const sse = $('#sse-indicator');
+  if (wantsLive && typeof EventSource !== 'undefined') {
     const es = new EventSource('/api/telemetry/stream');
-    es.addEventListener('open', () => {
-      if (sseIndicator) sseIndicator.textContent = 'SSE: live';
-    });
     es.addEventListener('telemetry', (evt) => {
-      if (sseIndicator) sseIndicator.textContent = 'SSE: live';
+      if (sse) sse.textContent = 'This page updates on its own.';
       try {
-        applyTelemetrySnapshot(JSON.parse(evt.data));
+        apply(JSON.parse(evt.data));
       } catch {
-        // Ignore malformed frame
+        /* malformed frame */
       }
     });
     es.addEventListener('error', () => {
-      if (sseIndicator) sseIndicator.textContent = 'SSE: reconnecting…';
+      if (sse) sse.textContent = 'Live updates paused, reconnecting.';
     });
   }
 
-  // Command Palette
-  const palette = document.getElementById('cmd-palette');
-  const openPaletteBtn = document.getElementById('open-cmd-palette');
-  const closePaletteBtn = document.getElementById('cmd-close');
-  const cmdInput = document.getElementById('cmd-input');
-  const cmdResults = document.getElementById('cmd-results');
+  // --------------------------------------------------------------- search
 
-  let activeItems = [];
-  let selectedIdx = 0;
-  let searchTimer = null;
+  const palette = $('#cmd-palette');
+  const input = $('#cmd-input');
+  const results = $('#cmd-results');
+  let items = [];
+  let selected = 0;
+  let timer = null;
+  let lastFocus = null;
 
-  function renderPaletteItems(items) {
-    if (!cmdResults) return;
-    cmdResults.replaceChildren();
-    activeItems = items;
-    selectedIdx = 0;
+  const KIND = { page: 'Page', project: 'Project', service: 'Service', dashboard: 'Dashboard', alert: 'Alert', action: 'Action' };
 
-    if (items.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'card-desc';
-      empty.style.padding = '1rem';
-      empty.textContent = 'No matching pages, projects, services, or Grafana items.';
-      cmdResults.appendChild(empty);
+  function render(list) {
+    items = list;
+    selected = 0;
+    if (!results) return;
+    if (list.length === 0) {
+      results.replaceChildren(el('div', 'cmd-empty', 'No matches. Try a project name, a service, or a tool.'));
       return;
     }
-
-    items.forEach((item, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = idx === 0 ? 'cmd-item selected' : 'cmd-item';
-
-      const left = document.createElement('div');
-      const title = document.createElement('div');
-      title.className = 'cmd-item-title';
-      title.textContent = item.title;
-      const sub = document.createElement('div');
-      sub.className = 'cmd-item-sub';
-      sub.textContent = item.subtitle;
-      left.append(title, sub);
-
-      const kind = document.createElement('span');
-      kind.className = 'cmd-item-kind';
-      kind.textContent = item.kind;
-
-      btn.append(left, kind);
-      btn.addEventListener('click', () => triggerItem(item));
-      cmdResults.appendChild(btn);
-    });
+    results.replaceChildren(
+      ...list.map((item, i) => {
+        const btn = el('button', i === 0 ? 'cmd-item selected' : 'cmd-item');
+        btn.type = 'button';
+        btn.setAttribute('role', 'option');
+        const left = el('div');
+        left.append(el('div', 'cmd-item-title', item.title), el('div', 'cmd-item-sub', item.subtitle));
+        btn.append(left, el('span', 'cmd-item-kind', KIND[item.kind] || item.kind));
+        btn.addEventListener('click', () => go(item));
+        btn.addEventListener('mousemove', () => select(i));
+        return btn;
+      })
+    );
   }
 
-  function updatePaletteSelection() {
-    if (!cmdResults) return;
-    const rows = cmdResults.querySelectorAll('.cmd-item');
-    rows.forEach((row, idx) => {
-      row.classList.toggle('selected', idx === selectedIdx);
-    });
+  function select(i) {
+    selected = i;
+    $$('.cmd-item', results).forEach((row, idx) => row.classList.toggle('selected', idx === i));
+    $$('.cmd-item', results)[i]?.scrollIntoView({ block: 'nearest' });
   }
 
-  function triggerItem(item) {
-    closePalette();
-    if (typeof item.action === 'function') {
-      item.action();
-    } else if (item.href) {
-      if (item.external) {
-        window.open(item.href, '_blank', 'noopener,noreferrer');
-      } else {
-        window.location.href = item.href;
-      }
-    }
+  function go(item) {
+    close();
+    if (typeof item.action === 'function') item.action();
+    else if (item.external) window.open(item.href, '_blank', 'noopener,noreferrer');
+    else if (item.href) window.location.href = item.href;
   }
 
-  async function runPaletteSearch(query) {
-    const localActions = [
-      {
-        title: 'Toggle Color Theme',
-        subtitle: 'Switch between Warm Obsidian and Archival Paper',
-        kind: 'action',
-        action: toggleTheme,
-      },
-    ];
-
+  async function search(q) {
+    const actions = [{ title: 'Switch color theme', subtitle: 'Light or dark', kind: 'action', action: toggleTheme }];
+    const ql = q.trim().toLowerCase();
+    const matched = ql ? actions.filter((a) => a.title.toLowerCase().includes(ql)) : actions;
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      const serverItems = Array.isArray(data.results) ? data.results : [];
-      const qLower = query.trim().toLowerCase();
-      const matchedActions = qLower
-        ? localActions.filter((a) => a.title.toLowerCase().includes(qLower))
-        : localActions;
-      renderPaletteItems([...serverItems, ...matchedActions]);
+      render([...(Array.isArray(data.results) ? data.results : []), ...matched]);
     } catch {
-      renderPaletteItems(localActions);
+      render(matched);
     }
   }
 
-  function openPalette() {
-    if (!palette || !cmdInput) return;
+  function open() {
+    if (!palette || !input) return;
+    lastFocus = document.activeElement;
     palette.classList.remove('hidden');
-    cmdInput.value = '';
-    cmdInput.focus();
-    runPaletteSearch('');
+    input.value = '';
+    input.focus();
+    search('');
   }
 
-  function closePalette() {
-    if (!palette) return;
+  function close() {
+    if (!palette || palette.classList.contains('hidden')) return;
     palette.classList.add('hidden');
+    if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
   }
 
-  if (openPaletteBtn) openPaletteBtn.addEventListener('click', openPalette);
-  if (closePaletteBtn) closePaletteBtn.addEventListener('click', closePalette);
-  if (palette) {
-    palette.addEventListener('click', (e) => {
-      if (e.target === palette) closePalette();
-    });
-  }
+  $('#open-cmd-palette')?.addEventListener('click', open);
+  $('#cmd-close')?.addEventListener('click', close);
+  palette?.addEventListener('click', (e) => {
+    if (e.target === palette) close();
+  });
 
-  if (cmdInput) {
-    cmdInput.addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => runPaletteSearch(cmdInput.value), 120);
-    });
-    cmdInput.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown' && activeItems.length > 0) {
-        e.preventDefault();
-        selectedIdx = (selectedIdx + 1) % activeItems.length;
-        updatePaletteSelection();
-      } else if (e.key === 'ArrowUp' && activeItems.length > 0) {
-        e.preventDefault();
-        selectedIdx = (selectedIdx - 1 + activeItems.length) % activeItems.length;
-        updatePaletteSelection();
-      } else if (e.key === 'Enter' && activeItems[selectedIdx]) {
-        e.preventDefault();
-        triggerItem(activeItems[selectedIdx]);
-      } else if (e.key === 'Escape') {
-        closePalette();
-      }
-    });
-  }
+  input?.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => search(input.value), 120);
+  });
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && items.length) {
+      e.preventDefault();
+      select((selected + 1) % items.length);
+    } else if (e.key === 'ArrowUp' && items.length) {
+      e.preventDefault();
+      select((selected - 1 + items.length) % items.length);
+    } else if (e.key === 'Enter' && items[selected]) {
+      e.preventDefault();
+      go(items[selected]);
+    }
+  });
 
   document.addEventListener('keydown', (e) => {
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName || '');
+    const hidden = !palette || palette.classList.contains('hidden');
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      if (palette && palette.classList.contains('hidden')) {
-        openPalette();
-      } else {
-        closePalette();
-      }
-    } else if (
-      e.key === '/' &&
-      palette &&
-      palette.classList.contains('hidden') &&
-      !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName || '')
-    ) {
+      hidden ? open() : close();
+    } else if (e.key === '/' && hidden && !typing) {
       e.preventDefault();
-      openPalette();
-    } else if (e.key === 'Escape' && palette && !palette.classList.contains('hidden')) {
-      closePalette();
+      open();
+    } else if (e.key === 'Escape' && !hidden) {
+      close();
     }
   });
 })();

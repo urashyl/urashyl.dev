@@ -3,11 +3,15 @@ mod data;
 mod grafana;
 mod render;
 
-use std::{convert::Infallible, sync::Arc, time::Instant};
+use std::{
+    convert::Infallible,
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 
 use axum::{
     Json, Router,
-    extract::{OriginalUri, Path, Query, Request, State},
+    extract::{OriginalUri, Path, Query, RawQuery, Request, State},
     http::{HeaderName, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{
@@ -23,7 +27,8 @@ use tracing::info;
 use crate::{
     config::AppConfig,
     data::{
-        HOMELAB_SERVICES, PROFILE, Project, ProjectCategory, ServiceCategory, adjacent_projects,
+        HOMELAB_SERVICES, PROFILE, PROJECTS, Project, ProjectCategory, ServiceCategory,
+        adjacent_projects,
         filter_projects, find_project,
     },
     grafana::{TelemetrySnapshot, TelemetryState, TelemetryStore},
@@ -32,6 +37,48 @@ use crate::{
 const STYLES_CSS: &str = include_str!("../static/styles.css");
 const APP_JS: &str = include_str!("../static/app.js");
 const FAVICON_SVG: &str = include_str!("../static/favicon.svg");
+
+/// Short content hash of the embedded assets, used as a `?v=` cache buster so
+/// browsers can cache CSS/JS indefinitely and still pick up new builds.
+pub fn asset_version() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        // FNV-1a, 64-bit
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in STYLES_CSS
+            .bytes()
+            .chain(APP_JS.bytes())
+            .chain(FAVICON_SVG.bytes())
+        {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{:010x}", hash & 0xff_ffff_ffff)
+    })
+}
+
+fn asset_cache_header(query: Option<&str>) -> HeaderValue {
+    let versioned = query
+        .map(|q| q.split('&').any(|kv| kv == format!("v={}", asset_version())))
+        .unwrap_or(false);
+    if versioned {
+        HeaderValue::from_static("public, max-age=31536000, immutable")
+    } else {
+        HeaderValue::from_static("public, max-age=300")
+    }
+}
+
+fn static_asset(ctype: &'static str, query: Option<String>, body: &'static str) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static(ctype)),
+            (header::CACHE_CONTROL, asset_cache_header(query.as_deref())),
+        ],
+        body,
+    )
+        .into_response()
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -184,55 +231,50 @@ async fn not_found_handler(State(state): State<AppState>, OriginalUri(uri): Orig
     (StatusCode::NOT_FOUND, Html(html)).into_response()
 }
 
-async fn styles() -> impl IntoResponse {
+async fn styles(RawQuery(q): RawQuery) -> Response {
+    static_asset("text/css; charset=utf-8", q, STYLES_CSS)
+}
+
+async fn script(RawQuery(q): RawQuery) -> Response {
+    static_asset("application/javascript; charset=utf-8", q, APP_JS)
+}
+
+async fn favicon(RawQuery(q): RawQuery) -> Response {
+    static_asset("image/svg+xml", q, FAVICON_SVG)
+}
+
+async fn robots() -> impl IntoResponse {
     (
-        StatusCode::OK,
-        [
-            (
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("text/css; charset=utf-8"),
-            ),
-            (
-                header::CACHE_CONTROL,
-                HeaderValue::from_static("public, max-age=300"),
-            ),
-        ],
-        STYLES_CSS,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        format!(
+            "User-agent: *\nDisallow: /api/\nSitemap: https://{}/sitemap.xml\n",
+            PROFILE.domain
+        ),
     )
 }
 
-async fn script() -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        [
-            (
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/javascript; charset=utf-8"),
-            ),
-            (
-                header::CACHE_CONTROL,
-                HeaderValue::from_static("public, max-age=300"),
-            ),
-        ],
-        APP_JS,
-    )
-}
-
-async fn favicon() -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        [
-            (
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("image/svg+xml"),
-            ),
-            (
-                header::CACHE_CONTROL,
-                HeaderValue::from_static("public, max-age=300"),
-            ),
-        ],
-        FAVICON_SVG,
-    )
+async fn sitemap() -> impl IntoResponse {
+    let mut paths = vec![
+        "/".to_string(),
+        "/projects".to_string(),
+        "/homelab".to_string(),
+        "/telemetry".to_string(),
+        "/about".to_string(),
+    ];
+    paths.extend(PROJECTS.iter().map(|p| format!("/projects/{}", p.id)));
+    let mut xml = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+"#,
+    );
+    for path in paths {
+        xml.push_str(&format!(
+            "  <url><loc>https://{}{}</loc></url>\n",
+            PROFILE.domain, path
+        ));
+    }
+    xml.push_str("</urlset>\n");
+    ([(header::CONTENT_TYPE, "application/xml; charset=utf-8")], xml)
 }
 
 async fn api_health(State(state): State<AppState>) -> Json<HealthResponse> {
@@ -343,11 +385,11 @@ async fn api_search(
     let mut results = Vec::new();
 
     let pages = [
-        ("Overview", "Landing summary & live telemetry panel", "/"),
-        ("Projects", "All engineering repositories & case studies", "/projects"),
-        ("Homelab", "Proxmox VE topology & service matrix", "/homelab"),
-        ("Telemetry", "Live Grafana metrics, alerts & setup", "/telemetry"),
-        ("About", "Profile, principles, stack & colophon", "/about"),
+        ("Home", "Intro and selected work", "/"),
+        ("Work", "Every project, with write-ups", "/projects"),
+        ("Homelab", "What runs on the Proxmox server", "/homelab"),
+        ("Server status", "Live metrics, alerts and service checks", "/telemetry"),
+        ("About", "Background, tools, and how this site works", "/about"),
     ];
     for (title, sub, href) in pages {
         if q.is_empty()
@@ -367,7 +409,7 @@ async fn api_search(
     for project in filter_projects(None, &q) {
         results.push(SearchHit {
             title: project.name.to_string(),
-            subtitle: format!("{} · {}", project.language, project.tagline),
+            subtitle: project.tagline.to_string(),
             kind: "project",
             href: format!("/projects/{}", project.id),
             external: false,
@@ -383,7 +425,7 @@ async fn api_search(
         {
             results.push(SearchHit {
                 title: svc.name.to_string(),
-                subtitle: format!("{} · {}", svc.role, svc.runtime),
+                subtitle: if svc.role.is_empty() { svc.runtime.to_string() } else { svc.role.to_string() },
                 kind: "service",
                 href: format!("/homelab?category={}", svc.category.as_str()),
                 external: false,
@@ -454,6 +496,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/styles.css", get(styles))
         .route("/app.js", get(script))
         .route("/favicon.svg", get(favicon))
+        .route("/robots.txt", get(robots))
+        .route("/sitemap.xml", get(sitemap))
         .route("/api/health", get(api_health))
         .route("/api/telemetry", get(api_telemetry))
         .route("/api/telemetry/stream", get(api_telemetry_stream))
@@ -500,7 +544,26 @@ async fn main() {
 }
 
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+    info!("shutting down");
 }
 
 #[cfg(test)]
@@ -538,13 +601,13 @@ mod tests {
         let base = format!("http://{addr}");
 
         for (path, expected) in [
-            ("/", "Live Cluster Telemetry"),
-            ("/projects", "Projects &amp; Architectural Case Studies"),
+            ("/", "Selected work"),
+            ("/projects", "Read the write-up"),
             ("/projects?category=systems", "mitch.pro"),
-            ("/projects/mitch-pro", "Component Layers"),
-            ("/homelab", "Proxmox VE Homelab"),
-            ("/telemetry", "Live Grafana Telemetry"),
-            ("/about", "Technical Stack Matrix"),
+            ("/projects/mitch-pro", "Decisions"),
+            ("/homelab", "Passwords and secrets"),
+            ("/telemetry", "Server status"),
+            ("/about", "What I use"),
         ] {
             let resp = client.get(format!("{base}{path}")).send().await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "GET {path}");
@@ -582,7 +645,7 @@ mod tests {
                 .unwrap();
             assert_eq!(resp.status(), StatusCode::NOT_FOUND);
             let body = resp.text().await.unwrap();
-            assert!(body.contains("HTTP 404"));
+            assert!(body.contains("Page not found"));
         }
 
         // Static assets
@@ -590,6 +653,8 @@ mod tests {
             ("/styles.css", "text/css"),
             ("/app.js", "application/javascript"),
             ("/favicon.svg", "image/svg+xml"),
+            ("/robots.txt", "text/plain"),
+            ("/sitemap.xml", "application/xml"),
         ] {
             let resp = client.get(format!("{base}{asset}")).send().await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK);
@@ -675,7 +740,7 @@ mod tests {
             .json()
             .await
             .unwrap();
-        assert_eq!(services.len(), 6);
+        assert_eq!(services.len(), HOMELAB_SERVICES.len());
 
         let search: serde_json::Value = client
             .get(format!("{base}/api/search?q=proxmox"))

@@ -1316,19 +1316,35 @@ fn extract_service_probes(svc_res: &DsQueryResult) -> Vec<ServiceProbeStatus> {
     let mut probes = Vec::with_capacity(HOMELAB_SERVICES.len());
 
     for svc in HOMELAB_SERVICES {
-        let matched = extracted.iter().find(|(cands, _, _)| {
+        let matches_svc = |cands: &Vec<String>| {
             cands.iter().any(|cand| {
                 let lower = cand.to_ascii_lowercase();
                 svc.probe_keywords.iter().any(|kw| lower.contains(kw))
             })
-        });
+        };
+        // A name can match several guests (e.g. an old stopped container and
+        // the VM that replaced it); the service is up if any of them is.
+        let matched = extracted
+            .iter()
+            .filter(|(cands, _, _)| matches_svc(cands))
+            .max_by_key(|(_, _, up)| *up);
 
         if let Some((_, target, up)) = matched {
+            // A target that is just the guest's own name is replaced with the
+            // public display name so raw Proxmox guest names never leave the server.
+            let target = target.as_ref().map(|t| {
+                let lower = t.to_ascii_lowercase();
+                if svc.probe_keywords.iter().any(|kw| lower.contains(kw)) {
+                    svc.name.to_string()
+                } else {
+                    t.clone()
+                }
+            });
             probes.push(ServiceProbeStatus {
                 service_id: svc.id.to_string(),
                 name: svc.name.to_string(),
                 up: Some(*up),
-                target: target.clone(),
+                target,
                 source: "grafana".to_string(),
             });
         } else {
@@ -1949,7 +1965,7 @@ mod tests {
                                     "data": { "values": [[1795056300000_i64], [1.0]] }
                                 },
                                 {
-                                    "schema": { "fields": [{ "name": "Time", "type": "time" }, { "name": "Value", "type": "number", "labels": { "id": "lxc/112", "job": "pve", "name": "vpn-box" } }] },
+                                    "schema": { "fields": [{ "name": "Time", "type": "time" }, { "name": "Value", "type": "number", "labels": { "id": "lxc/112", "job": "pve", "name": "testing-box" } }] },
                                     "data": { "values": [[1795056300000_i64], [1.0]] }
                                 }
                             ]
@@ -1987,7 +2003,7 @@ mod tests {
         assert_eq!(snap.metrics.load.unit, "guests");
         assert_eq!(snap.metrics.load.current, Some(22.0));
 
-        assert_eq!(snap.service_probes.len(), 6);
+        assert_eq!(snap.service_probes.len(), HOMELAB_SERVICES.len());
         for svc_id in ["infisical", "bitwarden", "immich", "nextcloud", "jellyfin", "memos"] {
             assert_eq!(snap.probe_for_service(svc_id).and_then(|p| p.up), Some(true));
         }
@@ -2002,7 +2018,7 @@ mod tests {
 
         let serialized = serde_json::to_string(&snap).unwrap();
         assert!(!serialized.contains("192.168."));
-        assert!(!serialized.contains("vpn-box"));
+        assert!(!serialized.contains("testing-box"));
         assert!(!serialized.contains("lxc/103"));
         assert!(!serialized.contains("lxc/125"));
     }
