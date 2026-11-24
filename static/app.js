@@ -338,6 +338,28 @@
     });
   }
 
+  // ------------------------------------------------------ project filter
+
+  const instantFilter = $('[data-instant-filter]');
+  if (instantFilter) {
+    const entries = $$('.work-entry[data-category]');
+    const links = $$('a[data-filter]', instantFilter);
+    instantFilter.addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-filter]');
+      if (!link || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      const cat = link.dataset.filter;
+      for (const entry of entries) {
+        entry.classList.toggle('hidden', cat !== 'all' && entry.dataset.category !== cat);
+      }
+      for (const l of links) {
+        if (l === link) l.setAttribute('aria-current', 'page');
+        else l.removeAttribute('aria-current');
+      }
+      history.replaceState(null, '', link.getAttribute('href'));
+    });
+  }
+
   // --------------------------------------------------------------- search
 
   const palette = $('#cmd-palette');

@@ -138,6 +138,11 @@ pub fn render_projects(
     snapshot: &TelemetrySnapshot,
 ) -> Markup {
     let query = query.trim();
+    let shown: Vec<&Project> = if query.is_empty() {
+        PROJECTS.iter().collect()
+    } else {
+        projects.to_vec()
+    };
     let href_for = |cat: Option<ProjectCategory>| -> String {
         let mut params = Vec::new();
         if let Some(c) = cat {
@@ -159,10 +164,10 @@ pub fn render_projects(
             p class="page-lead" {
                 "Each project links to a write-up of how it is built."
             }
-            nav class="filter" aria-label="Filter by category" {
-                a href=(href_for(None)) aria-current=[category.is_none().then_some("page")] { "All" }
+            nav class="filter" aria-label="Filter by category" data-instant-filter=[query.is_empty().then_some("")] {
+                a href=(href_for(None)) data-filter="all" aria-current=[category.is_none().then_some("page")] { "All" }
                 @for cat in [ProjectCategory::Systems, ProjectCategory::Desktop] {
-                    a href=(href_for(Some(cat))) aria-current=[(category == Some(cat)).then_some("page")] {
+                    a href=(href_for(Some(cat))) data-filter=(cat.as_str()) aria-current=[(category == Some(cat)).then_some("page")] {
                         (cat.label())
                     }
                 }
@@ -183,8 +188,11 @@ pub fn render_projects(
                 }
             } @else {
                 ul class="work-list work-list-full" {
-                    @for project in projects {
-                        li class="work-entry" {
+                    // Without a search query, render every project and hide the
+                    // ones outside the category so the filter can switch instantly.
+                    @for project in shown {
+                        @let visible = projects.iter().any(|p| p.id == project.id);
+                        li class=(if visible { "work-entry" } else { "work-entry hidden" }) data-category=(project.category.as_str()) {
                             div class="work-entry-head" {
                                 h2 { a href=(format!("/projects/{}", project.id)) { (project.name) } }
                                 span class="work-meta" { (project.language) ", " (project.updated_at) }
