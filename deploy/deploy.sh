@@ -16,6 +16,21 @@ fi
 cd "$repo"
 cargo build --release
 
+# systemctl --user talks to the per-user systemd instance over
+# /run/user/<uid>/bus. Shells from `su`/`sudo -u` often carry another user's
+# XDG_RUNTIME_DIR (e.g. /run/user/0), which fails with "Operation not permitted".
+runtime_dir="/run/user/$(id -u)"
+export XDG_RUNTIME_DIR="$runtime_dir"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+
+if [[ ! -S "$runtime_dir/bus" ]]; then
+  echo "No systemd user manager is running for $USER ($runtime_dir/bus is missing)." >&2
+  echo "Start one that also survives logout and reboot with:" >&2
+  echo "  sudo loginctl enable-linger $USER" >&2
+  echo "then run this script again." >&2
+  exit 1
+fi
+
 install -Dm644 "deploy/$unit" "$HOME/.config/systemd/user/$unit"
 systemctl --user daemon-reload
 systemctl --user enable "$unit" >/dev/null
