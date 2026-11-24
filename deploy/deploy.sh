@@ -16,15 +16,21 @@ fi
 cd "$repo"
 cargo build --release
 
-# systemctl --user talks to the per-user systemd instance over
-# /run/user/<uid>/bus. Shells from `su`/`sudo -u` often carry another user's
-# XDG_RUNTIME_DIR (e.g. /run/user/0), which fails with "Operation not permitted".
+# systemctl --user finds the per-user systemd instance through XDG_RUNTIME_DIR
+# (its socket is $XDG_RUNTIME_DIR/systemd/private; the D-Bus "bus" socket only
+# exists if dbus-user-session is installed). `su user` without `-` keeps root's
+# XDG_RUNTIME_DIR=/run/user/0, which fails with "Operation not permitted".
 runtime_dir="/run/user/$(id -u)"
 export XDG_RUNTIME_DIR="$runtime_dir"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+if [[ -S "$runtime_dir/bus" ]]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+else
+  unset DBUS_SESSION_BUS_ADDRESS
+fi
 
-if [[ ! -S "$runtime_dir/bus" ]]; then
-  echo "No systemd user manager is running for $USER ($runtime_dir/bus is missing)." >&2
+if [[ ! -S "$runtime_dir/systemd/private" ]]; then
+  echo "No systemd user manager is running for $USER ($runtime_dir/systemd/private is missing)." >&2
+  echo "As root, check it with: systemctl status user@$(id -u).service" >&2
   echo "Start one that also survives logout and reboot with:" >&2
   echo "  sudo loginctl enable-linger $USER" >&2
   echo "then run this script again." >&2
