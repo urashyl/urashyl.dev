@@ -141,13 +141,57 @@ pub const PROFILE: Profile = Profile {
     avatar_url: "https://avatars.githubusercontent.com/u/109770019?v=4",
     location_note: "Arch Linux · Proxmox VE · Self-hosted",
     headline: "Rust backends, hardened Linux systems, and self-hosted infrastructure.",
-    subheadline: "Current projects: a multi-tenant Rust web platform, an amnesic Arch Linux live system, hardened sandboxes for AI coding agents, and a niri Wayland desktop.",
+    subheadline: "Main project: necropsy, daily security puzzles built from real findings. Also an amnesic Arch Linux live system, hardened sandboxes for AI coding agents, and a niri Wayland desktop.",
     uptime: "99.9%",
     hypervisor: "Proxmox VE",
     os: "Arch Linux (linux-hardened)",
 };
 
 pub const PROJECTS: &[Project] = &[
+    Project {
+        id: "necropsy",
+        name: "necropsy",
+        tagline: "Daily security puzzles built from real malware, extensions and decrypted data",
+        description: "Short puzzles built from real findings. Each puzzle is a pack with a brief, files, an answer hash and an explainer. A Learn track takes a beginner from a first packet capture to a 5/5 puzzle, a new daily is released each day, and old ones stay playable.",
+        overview: "necropsy turns real findings into puzzles anyone can play in a browser. Difficulty 1 to 3 needs nothing installed: every puzzle has a workspace with a pcap viewer, decoder, request console, Python notebook and hex viewer. Live puzzles give each player a server of their own, and some packs generate per-player files and answers. The project is a Rust workspace under AGPL v3, with a demo at necropsy.urashyl.dev.",
+        highlights: &[
+            "Browser workspace: pcap viewer, decoder, request console, Python notebook, hex viewer",
+            "Sealed dailies: encrypted in the public repository, opened only when released",
+            "Per-player live labs on an isolated range VM with no network",
+        ],
+        architecture: &[
+            ArchLayer {
+                layer: "Pack format",
+                detail: "A pack is a directory with pack.toml, a brief, files, an answer hash and an explainer. The necropsy-pack crate loads and validates packs and ships the pack-tool authoring helper. The site never runs anything from a pack.",
+            },
+            ArchLayer {
+                layer: "Sealed packs",
+                detail: "Unreleased dailies are encrypted with a per-pack AES-256-GCM key, sealed to a public wrap key with an X25519 sealed box, and committed as .sealed files. Only production holds the master key, and each pack's key is published once its day is over.",
+            },
+            ArchLayer {
+                layer: "Generators",
+                detail: "The necropsy-gen-sdk crate lets a pack build per-player files and answers in a sandbox, so a shared solution cannot be copied. A generated daily of difficulty 1 to 3 also ships a browser solver that proves it can be solved with nothing installed.",
+            },
+            ArchLayer {
+                layer: "Range",
+                detail: "The necropsy-spawner crate runs on a separate VM and starts one container per player from allowlisted images: read-only root, no capabilities, no network, reachable only through a unix socket. Each site is a tenant with its own token, images and limits.",
+            },
+        ],
+        decisions: &[
+            "Sealed the unreleased dailies instead of keeping the repository private, so the code, the docs and every released puzzle stay open under AGPL v3.",
+            "Put live labs on their own VM with no network and nothing else on it, so a lab escape reaches no site, database or account.",
+            "Kept difficulty 1 to 3 solvable entirely in the browser workspace, and enforced it with a browser solver in CI.",
+        ],
+        role: "Creator & Maintainer",
+        language: "Rust",
+        tags: &["Rust", "AGPL", "Docker", "Caddy", "Security", "Puzzles"],
+        category: ProjectCategory::Systems,
+        featured: true,
+        repo_url: "https://github.com/urashyl/necropsy",
+        live_url: Some("https://necropsy.urashyl.dev"),
+        updated_at: "Nov 2026",
+        status_note: None,
+    },
     Project {
         id: "mitch-pro",
         name: "mitch.pro",
@@ -500,6 +544,39 @@ pub const HOMELAB_SERVICES: &[HomelabService] = &[
         highlights: &[],
     },
     HomelabService {
+        id: "vm-necropsy",
+        name: "necropsy",
+        role: "necropsy, production",
+        category: ServiceCategory::Machines,
+        runtime: "KVM guest",
+        exposure: "",
+        probe_keywords: &["necropsy"],
+        description: "The live necropsy site.",
+        highlights: &[],
+    },
+    HomelabService {
+        id: "vm-necropsy-dev",
+        name: "necropsy-dev",
+        role: "necropsy, development",
+        category: ServiceCategory::Machines,
+        runtime: "KVM guest",
+        exposure: "",
+        probe_keywords: &["necropsy-dev"],
+        description: "Development instance of necropsy.",
+        highlights: &[],
+    },
+    HomelabService {
+        id: "vm-necropsy-instances",
+        name: "necropsy-instances",
+        role: "necropsy range",
+        category: ServiceCategory::Machines,
+        runtime: "KVM guest",
+        exposure: "",
+        probe_keywords: &["necropsy-instances"],
+        description: "Runs the per-player lab containers for the necropsy sites.",
+        highlights: &[],
+    },
+    HomelabService {
         id: "vm-arch-linux",
         name: "arch-linux",
         role: "Arch Linux",
@@ -636,7 +713,9 @@ mod tests {
 
     #[test]
     fn filters_and_looks_up_projects_accurately() {
-        assert_eq!(PROJECTS.len(), 4);
+        assert_eq!(PROJECTS.len(), 5);
+        assert_eq!(PROJECTS[0].id, "necropsy");
+        assert!(find_project("necropsy").is_some());
         assert!(find_project("mitch-pro").is_some());
         assert!(find_project("calc").is_none());
         assert!(find_project("chadwm").is_none());
@@ -647,8 +726,8 @@ mod tests {
         assert_eq!(rust_projects.len(), 1);
         assert_eq!(rust_projects[0].id, "mitch-pro");
 
-        let (prev, next) = adjacent_projects("mitch-pro");
+        let (prev, next) = adjacent_projects("necropsy");
         assert!(prev.is_none());
-        assert_eq!(next.map(|p| p.id), Some("lacuna"));
+        assert_eq!(next.map(|p| p.id), Some("mitch-pro"));
     }
 }

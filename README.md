@@ -9,7 +9,7 @@ Open-source, single-binary Rust + Axum portfolio and live Proxmox VE homelab obs
 - **Multi-Page Routes**:
   - `/` — Intro, a live CPU trace from the homelab, selected work, and what runs at home.
   - `/projects` — All projects, filterable by category (`?category=systems|desktop`, `?q=`).
-  - `/projects/{slug}` — Write-ups (`mitch-pro`, `lacuna`, `ai-container`, `niri`): how each is built and why.
+  - `/projects/{slug}` — Write-ups (`necropsy`, `mitch-pro`, `lacuna`, `ai-container`, `niri`): how each is built and why.
   - `/homelab` — Topology diagram and the services on the Proxmox host, with live up/down status.
   - `/telemetry` — Server status: CPU/memory/disk/guests/network charts, service checks, alerts, and events, updated over SSE.
   - `/about` — Background, principles, tools, and how the site works.

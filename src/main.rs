@@ -603,8 +603,8 @@ mod tests {
         for (path, expected) in [
             ("/", "Selected work"),
             ("/projects", "Read the write-up"),
-            ("/projects?category=systems", "mitch.pro"),
-            ("/projects/mitch-pro", "Decisions"),
+            ("/projects?category=systems", "necropsy"),
+            ("/projects/necropsy", "Decisions"),
             ("/homelab", "Passwords and secrets"),
             ("/telemetry", "Server status"),
             ("/about", "Tools"),
@@ -705,7 +705,7 @@ mod tests {
             .json()
             .await
             .unwrap();
-        assert_eq!(all_projects.len(), 4);
+        assert_eq!(all_projects.len(), 5);
 
         let projects: Vec<serde_json::Value> = client
             .get(format!("{base}/api/projects?category=systems&q=axum"))
